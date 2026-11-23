@@ -1,0 +1,1314 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#777777">
+<title>ミニゲーム</title>
+
+<script id="game-config">
+/* =====================================================================
+   設定（ここを書き換えるだけで、別のお店・イベント用にできます）
+
+   この見本を別のお店に使うときに変える所：
+     1. shopName と eventName（店名とイベント名）
+     2. colors（色。カードを濃くするときは、下の色の説明の注意を読む）
+     3. art（スタート画面の星のマスコット。出さないときは "none"）
+     4. ranks の title と prize（ランクの見出しと景品）。景品の金額は、お店で上限を確認してもらう
+     5. texts の文（「星」「黒い雲」の呼び名など、変えたい物だけ）
+     6. storageKey（お店ごとに別の名前にする）
+     7. sampleNote を ""（空）にする。credit はお店の希望に合わせる
+     ※ 点数・時間・出てくる速さ（points、timeLimit、spawn、combo）と ranks の min は、難しさの調整なので、そのままにする
+     ※ ファイルの冒頭の <title> と theme-color も、お店の名前と色にしておく
+   ===================================================================== */
+const CONFIG = {
+  // ---- お店・イベントの名前 ----
+  shopName: "ほしのうたカフェ",        // 店名（画面の上に小さく表示）
+  eventName: "星あつめチャレンジ",    // イベント名（ゲームのタイトルとして大きく表示）
+
+  // ---- 色（"#rrggbb" の形で書きます） ----
+  colors: {
+    main: "#ff6f91",        // メインの色（スタートボタン、タイトル文字、景品の枠）
+    sub: "#6c63ff",         // サブの色（ゲージ、コンボ表示、文字の影）
+    bgTop: "#2b2a6b",       // 背景グラデーションの上の色
+    bgBottom: "#7a5cc7",    // 背景グラデーションの下の色
+    finalTop: "#5a1e4a",    // 残りわずかのときの背景（上）
+    finalBottom: "#ff7a59", // 残りわずかのときの背景（下）
+    gold: "#ffc400",        // 金の星の色
+    stars: ["#ff9fcb", "#7ee0c3", "#8ecbff", "#c9a7ff"], // ふつうの星の色（この中からランダム）
+    // カード（スタート画面・結果画面の白い板）の色。カードを濃くしたら、ink・inkSoft・minus を明るくして、文字が読めるようにする
+    // main（ボタン）や sub（店名の札）を明るい色にしたら、onColor を濃い色にする。札とボタンの両方で文字が読めるか確かめる
+    card: "#ffffff",        // カードの地の色（少し透けて見えます）
+    ink: "#2d2346",         // カードの上の文字の色
+    inkSoft: "#4a3f66",     // カードの上の注意書き（架空のお店の見本です など）の色
+    minus: "#5a4d7a",       // カードの上の、減点の数字（黒い雲の -30）の色
+    onBg: "#ffffff",        // 背景の上の文字（スコアなどの表示、credit）の色。背景を明るくしたら濃い色にする
+    onColor: "#ffffff"      // 色の付いたボタン・札（スタート、店名、景品）の上の文字の色
+  },
+
+  // ---- スタート画面の絵 ----
+  // "star"（星のマスコット）か "none"（絵なし）。ほかの値のときは、絵なしになります
+  art: "star",
+
+  // ---- 時間 ----
+  timeLimit: 30,     // 制限時間（秒）
+  finalSeconds: 5,   // 残り何秒から「ラストスパート」の演出にするか（0 で演出なし）
+
+  // ---- 点数（星と金の星を当てるとコンボが続きます。黒い雲は点数に関係なく、さわるとコンボが切れます） ----
+  points: {
+    star: 10,    // ふつうの星
+    gold: 50,    // 金の星
+    cloud: -30   // 黒い雲（減点。点数は 0 より下がりません。0 にすると点数は減らず、コンボが切れるだけになります）
+  },
+
+  // ---- コンボ（続けて星を当てたときのボーナス） ----
+  combo: {
+    step: 5,           // 何コンボごとに倍率が上がるか
+    bonus: 0.5,        // 1段階で上がる倍率（0.5 なら ×1 → ×1.5 → ×2 …）
+    maxMultiplier: 3   // 倍率の上限
+  },
+
+  // ---- 出てくる頻度と速さ ----
+  spawn: {
+    interval: 0.36,       // 何秒ごとに1つ出るか（ふだん）
+    finalInterval: 0.3,   // 何秒ごとに1つ出るか（ラストスパート中）
+    life: 0.9,            // 1つが画面にいる時間（秒・ふだん）。短いほど難しい
+    finalLife: 0.75,      // 1つが画面にいる時間（秒・ラストスパート中）
+    speed: 30,            // 動く速さの最大（1秒に何ピクセル・ふだん）。速いほど狙いにくい
+    finalSpeed: 55,       // 動く速さの最大（1秒に何ピクセル・ラストスパート中）
+    maxOnScreen: 6,      // 同時に出ている数の上限
+    goldRate: 0.1,        // 金の星が出る割合（0.1 = 10%）
+    cloudRate: 0.2        // 黒い雲が出る割合（0.2 = 20%）
+  },
+
+  // ---- 景品ランク（min 点以上でそのランク。上から順に高いランクを書く） ----
+  // ※ 景品の金額には法律（景品表示法）の上限があります。景品はお店で上限を確認してから決めてください。
+  // 制限時間を変えたら min も見直す（目安：30秒で全部当てると約2600点。星の9割で約2000点、8割で約1100点、6割で約550点、5割で約400点）
+  // 一番下のランクの min は 0 にする（0点でも必ずどれかのランクになるように）
+  // rank は1〜2文字にする（丸いバッジの中に入る長さ）
+  ranks: [
+    { rank: "S", min: 2200, color: "#ffb800", title: "星の達人！",       prize: "ドリンク1杯 無料" },
+    { rank: "A", min: 800,  color: "#ff6f91", title: "すごい！",         prize: "ドリンク 100円引き" },
+    { rank: "B", min: 400,  color: "#6c63ff", title: "いい感じ！",       prize: "クッキー1枚 プレゼント" },
+    { rank: "C", min: 0,    color: "#3fb8a5", title: "ナイスチャレンジ！", prize: "オリジナルステッカー" }
+  ],
+  prizeNote: "この画面をスタッフに見せてね",  // 景品の下に出す一文
+  // 見本の注意書き（スタート画面と、結果画面の景品の欄に出す）。実際のお店で使うときは "" にすると消えます
+  sampleNote: "※ 架空のお店の見本です",
+
+  // ---- 画面の文 ----
+  // {time} は制限時間の数、{n} はコンボの数に置きかわります
+  texts: {
+    rule: "{time}秒で 星をたくさんタップしよう！", // スタート画面の説明（{time} は太字で出ます）
+    ruleNote: "星を取りのがすと コンボが切れるよ",
+    legendStar: "星",                // スタート画面の、点数の説明の名前
+    legendGold: "金の星",
+    legendCloud: "黒い雲",
+    start: "スタート",               // スタートボタン
+    bestLabel: "自己ベスト",         // スタート画面の「自己ベスト ○ 点」
+    pointUnit: "点",
+    hudScore: "スコア",              // 遊んでいる間の、上の表示
+    hudCombo: "コンボ",
+    hudTime: "のこり",
+    secUnit: "秒",
+    go: "スタート！",                // 画面の真ん中に大きく出る文
+    lastSpurt: "ラストスパート！",
+    finish: "しゅうりょう！",
+    comboUp: "{n}コンボ！",          // コンボで倍率が上がったとき（後ろに「×1.5」などが付きます）
+    miss: "おしい！",                // 星を取りのがしたとき
+    resultTitle: "けっか発表",       // 結果画面
+    newBest: "自己ベスト更新！",
+    statBest: "自己ベスト",
+    statCombo: "最大コンボ",
+    statHits: "タッチした星",
+    prizeLabel: "景品",
+    retry: "もう一度あそぶ"
+  },
+
+  // ---- その他 ----
+  credit: "Sample by Ryvona",                // 画面の隅に出す小さな文字
+  storageKey: "hoshinouta-cafe-time-attack-best" // 自己ベストを保存する名前（お店ごとに変える）
+};
+</script>
+
+<script id="game-logic">
+/* =====================================================================
+   ゲームの計算（画面に依存しない小さな関数。node でも試せます）
+   ===================================================================== */
+const GameLogic = (function () {
+  // 足りない入力や形の違う入力でも、例外を出さず、NaN も返さない
+  function isObj(x) { return x !== null && typeof x === "object" && !Array.isArray(x); }
+  function isNum(v) { return typeof v === "number" && isFinite(v); }
+  function num(v, def) { return isNum(v) ? v : def; }
+  function has(o, k) { return isObj(o) && Object.prototype.hasOwnProperty.call(o, k); }
+  // 状態を正しい形にそろえる（点数・コンボは 0 以上の数）
+  function cleanState(state) {
+    var st = isObj(state) ? state : {};
+    return { score: Math.max(0, num(st.score, 0)), combo: Math.max(0, Math.floor(num(st.combo, 0))), maxCombo: Math.max(0, num(st.maxCombo, 0)) };
+  }
+
+  // コンボ数から倍率を出す
+  function comboMultiplier(combo, comboCfg) {
+    if (!(combo > 0)) return 1;
+    var cc = isObj(comboCfg) ? comboCfg : {};
+    var step = Math.max(1, Math.floor(num(cc.step, 1)));
+    var bonus = Math.max(0, num(cc.bonus, 0));
+    var maxM = Math.max(1, num(cc.maxMultiplier, 1));
+    var m = 1 + Math.floor(combo / step) * bonus;
+    if (!(m >= 1)) m = 1;
+    return Math.min(m, maxM);
+  }
+
+  // ターゲットに当てたときの新しい状態を返す（元の state は変えない）
+  function applyHit(state, type, cfg) {
+    var st = cleanState(state);
+    var pts = isObj(cfg) && isObj(cfg.points) ? cfg.points : {};
+    var base = has(pts, type) ? pts[type] : undefined;
+    if (!isNum(base)) {
+      return { score: st.score, combo: st.combo, maxCombo: st.maxCombo, gained: 0, multiplier: 1 };
+    }
+    if (type === "cloud" || base < 0) {
+      // 雲（または減点の物）：点数に関係なくコンボは切れる。点数は 0 より下がらない
+      // gained は実際に変わった点数（残り20点で -30 なら -20、0点なら 0）
+      var score = Math.max(0, st.score + base);
+      return { score: score, combo: 0, maxCombo: st.maxCombo, gained: score - st.score, multiplier: 1 };
+    }
+    var combo = st.combo + 1;
+    var multiplier = comboMultiplier(combo, cfg.combo);
+    var gained = Math.round(base * multiplier);
+    return {
+      score: st.score + gained,
+      combo: combo,
+      maxCombo: Math.max(st.maxCombo, combo),
+      gained: gained,
+      multiplier: multiplier
+    };
+  }
+
+  // 星を取り逃したとき：コンボだけ切れる
+  function applyMiss(state) {
+    var st = cleanState(state);
+    return { score: st.score, combo: 0, maxCombo: st.maxCombo, gained: 0, multiplier: 1 };
+  }
+
+  // 点数からランクを決める（ranks の並び順に関係なく、min が高い順に判定）
+  // min が数でないランクは使わない。使えるランクが無ければ null
+  function getRank(score, ranks) {
+    if (!Array.isArray(ranks)) return null;
+    var list = ranks.filter(function (r) { return isObj(r) && isNum(r.min); });
+    if (!list.length) return null;
+    var s = num(score, 0);
+    var sorted = list.sort(function (a, b) { return b.min - a.min; });
+    for (var i = 0; i < sorted.length; i++) {
+      if (s >= sorted[i].min) return sorted[i];
+    }
+    return sorted[sorted.length - 1];
+  }
+
+  // 0 以上 1 未満の乱数 r から、出すターゲットの種類を決める
+  // r が数でない・範囲の外のときは、ふつうの星にする
+  function pickType(r, spawnCfg) {
+    if (typeof r !== "number" || !(r >= 0 && r < 1)) return "star";
+    var sc = isObj(spawnCfg) ? spawnCfg : {};
+    var gold = Math.max(0, num(sc.goldRate, 0)), cloud = Math.max(0, num(sc.cloudRate, 0));
+    if (r < gold) return "gold";
+    if (r < gold + cloud) return "cloud";
+    return "star";
+  }
+
+  // 設定を確かめる。間違いの説明（日本語の文）の配列を返す。空なら問題なし
+  function checkConfig(cfg) {
+    var errs = [];
+    if (!isObj(cfg)) return ["CONFIG がありません（または形が違います）。"];
+    function str(v, name, allowEmpty) {
+      if (typeof v !== "string" || (!allowEmpty && v === "")) errs.push(name + "を \"…\" で囲んだ文字で書いてください。");
+    }
+    // test：正しい値なら true を返す関数。hint：正しい値の説明
+    function numOk(v, name, test, hint) {
+      if (!isNum(v)) errs.push(name + "が数ではありません（\"\" で囲まずに、数だけを書いてください）。");
+      else if (test && !test(v)) errs.push(name + "は " + hint + "にしてください（今は " + v + "）。");
+    }
+    var pos = function (v) { return v > 0; }, nonNeg = function (v) { return v >= 0; };
+    var atLeast1 = function (v) { return v >= 1; }, rate = function (v) { return v >= 0 && v <= 1; };
+
+    str(cfg.shopName, "shopName（店名）", true);
+    str(cfg.eventName, "eventName（イベント名）", true);
+
+    if (!isObj(cfg.colors)) errs.push("colors（色）が { … } の形になっていません。");
+    else {
+      ["main", "sub", "bgTop", "bgBottom", "finalTop", "finalBottom", "gold"].forEach(function (k) {
+        str(cfg.colors[k], "colors の " + k + "（色）", false);
+      });
+      if (!Array.isArray(cfg.colors.stars)) errs.push("colors の stars（星の色）が [ … ] の形になっていません。");
+      ["card", "ink", "inkSoft", "minus", "onBg", "onColor"].forEach(function (k) {
+        if (cfg.colors[k] !== undefined) str(cfg.colors[k], "colors の " + k + "（色）", false);
+      });
+    }
+
+    numOk(cfg.timeLimit, "timeLimit（制限時間）", pos, "0 より大きい数");
+    numOk(cfg.finalSeconds, "finalSeconds（ラストスパートの秒数）", nonNeg, "0 以上");
+
+    if (!isObj(cfg.points)) errs.push("points（点数）が { … } の形になっていません。");
+    else {
+      numOk(cfg.points.star, "points の star（星の点数）");
+      numOk(cfg.points.gold, "points の gold（金の星の点数）");
+      numOk(cfg.points.cloud, "points の cloud（黒い雲の点数）");
+    }
+
+    if (!isObj(cfg.combo)) errs.push("combo（コンボ）が { … } の形になっていません。");
+    else {
+      numOk(cfg.combo.step, "combo の step（何コンボごとか）", atLeast1, "1 以上");
+      numOk(cfg.combo.bonus, "combo の bonus（上がる倍率）", nonNeg, "0 以上");
+      numOk(cfg.combo.maxMultiplier, "combo の maxMultiplier（倍率の上限）", atLeast1, "1 以上");
+    }
+
+    if (!isObj(cfg.spawn)) errs.push("spawn（出てくる頻度と速さ）が { … } の形になっていません。");
+    else {
+      var sp = cfg.spawn;
+      numOk(sp.interval, "spawn の interval（出る間隔）", pos, "0 より大きい数");
+      numOk(sp.finalInterval, "spawn の finalInterval（ラストスパート中の出る間隔）", pos, "0 より大きい数");
+      numOk(sp.life, "spawn の life（画面にいる時間）", pos, "0 より大きい数");
+      numOk(sp.finalLife, "spawn の finalLife（ラストスパート中の画面にいる時間）", pos, "0 より大きい数");
+      numOk(sp.speed, "spawn の speed（動く速さ）", nonNeg, "0 以上");
+      numOk(sp.finalSpeed, "spawn の finalSpeed（ラストスパート中の動く速さ）", nonNeg, "0 以上");
+      numOk(sp.maxOnScreen, "spawn の maxOnScreen（同時に出る数）", atLeast1, "1 以上");
+      numOk(sp.goldRate, "spawn の goldRate（金の星の割合）", rate, "0 から 1 の間");
+      numOk(sp.cloudRate, "spawn の cloudRate（黒い雲の割合）", rate, "0 から 1 の間");
+      if (isNum(sp.goldRate) && isNum(sp.cloudRate) && sp.goldRate + sp.cloudRate > 1) {
+        errs.push("spawn の goldRate と cloudRate の合計は 1 以下にしてください（今は " + (sp.goldRate + sp.cloudRate) + "）。");
+      }
+    }
+
+    if (!Array.isArray(cfg.ranks) || !cfg.ranks.length) {
+      errs.push("ranks（景品ランク）が1つもありません。少なくとも1つ書いてください。");
+    } else {
+      cfg.ranks.forEach(function (r, i) {
+        var at = "ranks の " + (i + 1) + " 番目";
+        if (!isObj(r)) { errs.push(at + "が { … } の形になっていません。"); return; }
+        str(r.rank, at + "の rank（ランクの文字）", false);
+        numOk(r.min, at + "の min（点数）");
+        str(r.prize, at + "の prize（景品）", true);
+        if (r.title !== undefined) str(r.title, at + "の title（見出し）", true);
+        if (r.color !== undefined) str(r.color, at + "の color（色）", false);
+      });
+    }
+
+    ["prizeNote", "sampleNote", "credit"].forEach(function (k) {
+      if (cfg[k] !== undefined) str(cfg[k], k, true);
+    });
+    str(cfg.storageKey, "storageKey（保存する名前）", false);
+    if (cfg.texts !== undefined && !isObj(cfg.texts)) errs.push("texts（画面の文）が { … } の形になっていません。");
+    return errs;
+  }
+
+  // 自己ベスト更新か
+  function isNewBest(score, best) {
+    return isNum(score) && score > 0 && score > num(best, 0);
+  }
+
+  return { comboMultiplier: comboMultiplier, applyHit: applyHit, applyMiss: applyMiss,
+           getRank: getRank, pickType: pickType, isNewBest: isNewBest, checkConfig: checkConfig };
+})();
+if (typeof module !== "undefined" && module.exports) { module.exports = GameLogic; }
+</script>
+
+<style>
+  :root {
+    --main: #ff6f91;
+    --sub: #6c63ff;
+    --bg1: #2b2a6b;
+    --bg2: #7a5cc7;
+    --final1: #5a1e4a;
+    --final2: #ff7a59;
+    --ink: #2d2346;
+    --ink-soft: #4a3f66;
+    --minus: #5a4d7a;
+    --card: #fff;      /* カードの地（94% で重ねて、少し透けさせる） */
+    --on-bg: #fff;     /* 背景の上の文字 */
+    --on-color: #fff;  /* 色の付いたボタン・札の上の文字 */
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow: hidden; overscroll-behavior: none; }
+  body {
+    position: fixed; inset: 0;
+    font-family: "Hiragino Maru Gothic ProN", "Hiragino Sans", "Meiryo", system-ui, sans-serif; /* 端末にある字体だけを使う（丸い字体を優先） */
+    color: var(--on-bg);
+    background-color: var(--bg1);
+    background-image: linear-gradient(180deg, var(--bg1), var(--bg2));
+    touch-action: manipulation;
+    user-select: none; -webkit-user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  /* ラストスパート用の背景（重ねて透明度で切り替え） */
+  body::before {
+    content: ""; position: fixed; inset: 0; pointer-events: none;
+    background: linear-gradient(180deg, var(--final1), var(--final2));
+    opacity: 0; transition: opacity .9s ease;
+  }
+  body.final::before { opacity: 1; }
+
+  #field { position: fixed; inset: 0; width: 100%; height: 100%; display: block; z-index: 1; touch-action: none; }
+  #flash {
+    position: fixed; inset: 0; z-index: 4; pointer-events: none; opacity: 0;
+    background: radial-gradient(circle at center, rgba(255,40,90,0) 35%, rgba(255,40,90,.6) 100%);
+    transition: opacity .35s ease;
+  }
+  #flash.on { opacity: 1; transition: none; }
+
+  /* ---------- 画面上部の表示（スコア・コンボ・時間） ---------- */
+  #hud {
+    position: fixed; left: 0; right: 0; top: 0; z-index: 5; pointer-events: none;
+    padding: calc(env(safe-area-inset-top, 0px) + 10px) 12px 6px;
+    transition: opacity .3s ease, transform .3s ease;
+  }
+  #hud.off { opacity: 0; transform: translateY(-12px); }
+  .hud-row {
+    display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px;
+    max-width: 560px; margin: 0 auto;
+  }
+  .hud-box {
+    background: color-mix(in srgb, var(--on-bg) 16%, transparent);
+    border: 2px solid color-mix(in srgb, var(--on-bg) 30%, transparent);
+    border-radius: 18px;
+    padding: 5px 6px 6px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    line-height: 1.05;
+    -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  }
+  .hud-label { font-size: 11px; font-weight: 800; letter-spacing: .08em; opacity: .85; }
+  .hud-val { font-size: 28px; font-weight: 900; font-variant-numeric: tabular-nums; letter-spacing: .01em; }
+  .hud-val small { font-size: 14px; font-weight: 800; margin-left: 2px; }
+  #comboBox.hot { background: color-mix(in srgb, var(--sub) 55%, transparent); border-color: rgba(255,255,255,.7); }
+  #mult { color: #ffe066; }
+  .bar {
+    max-width: 560px; margin: 8px auto 0; height: 14px; border-radius: 99px; overflow: hidden;
+    background: rgba(0,0,0,.28); border: 2px solid color-mix(in srgb, var(--on-bg) 35%, transparent);
+  }
+  #barFill {
+    height: 100%; width: 100%; border-radius: 99px; transform-origin: left center;
+    background: linear-gradient(90deg, var(--sub), var(--main));
+  }
+  body.final #barFill { background: linear-gradient(90deg, #ff3d6e, #ffb03b); animation: barPulse .45s ease-in-out infinite alternate; }
+  body.final #time { color: #ffe066; }
+  .bump { animation: bump .22s ease-out; }
+  .tick { animation: tick .5s ease-out; }
+  @keyframes bump { 0% { transform: scale(1); } 40% { transform: scale(1.28); } 100% { transform: scale(1); } }
+  @keyframes tick { 0% { transform: scale(1.6); } 100% { transform: scale(1); } }
+  @keyframes barPulse { from { filter: brightness(1); } to { filter: brightness(1.35); } }
+
+  /* ---------- 画面中央の大きな文字（3・2・1 など） ---------- */
+  #banner { position: fixed; inset: 0; z-index: 6; display: grid; place-items: center; pointer-events: none; }
+  #banner span {
+    display: block; font-weight: 900; color: var(--on-bg); opacity: 0; white-space: nowrap;
+    text-shadow: 0 6px 0 var(--sub), 0 12px 30px rgba(0,0,0,.35);
+    animation-duration: var(--dur, 900ms); animation-fill-mode: forwards; animation-timing-function: ease-out;
+  }
+  #banner span.count { font-size: clamp(110px, 40vw, 220px); animation-name: countPop; }
+  #banner span.msg { font-size: clamp(36px, 11vw, 72px); animation-name: msgPop; }
+  #banner span.finalmsg { font-size: clamp(34px, 10vw, 68px); color: #ffe066; text-shadow: 0 6px 0 #d8345f, 0 12px 30px rgba(0,0,0,.35); animation-name: msgPop; }
+  @keyframes countPop {
+    0% { opacity: 0; transform: scale(2.2) rotate(-8deg); }
+    25% { opacity: 1; transform: scale(1) rotate(0); }
+    75% { opacity: 1; transform: scale(.94); }
+    100% { opacity: 0; transform: scale(.6); }
+  }
+  @keyframes msgPop {
+    0% { opacity: 0; transform: scale(.4); }
+    20% { opacity: 1; transform: scale(1.12); }
+    32% { transform: scale(1); }
+    80% { opacity: 1; transform: scale(1); }
+    100% { opacity: 0; transform: scale(1.15); }
+  }
+  @keyframes fadeOnly { 0% { opacity: 0; } 15% { opacity: 1; } 80% { opacity: 1; } 100% { opacity: 0; } }
+
+  /* ---------- スタート画面・結果画面 ---------- */
+  .screen {
+    position: fixed; inset: 0; z-index: 10;
+    display: flex; align-items: center; justify-content: center;
+    padding: calc(env(safe-area-inset-top, 0px) + 14px) 16px calc(env(safe-area-inset-bottom, 0px) + 30px);
+    opacity: 0; visibility: hidden;
+    transition: opacity .35s ease, visibility 0s linear .35s;
+  }
+  .screen.show { opacity: 1; visibility: visible; transition: opacity .35s ease; }
+  /* 消えていく途中の画面は、すぐに押せなくする（下の画面のボタンを押し抜けないように） */
+  .screen:not(.show) { pointer-events: none; }
+  .card {
+    width: 100%; max-width: 400px; max-height: 100%; overflow-y: auto; overscroll-behavior: contain;
+    background: color-mix(in srgb, var(--card) 94%, transparent); color: var(--ink);
+    border-radius: 30px; padding: 20px 20px 22px; text-align: center;
+    box-shadow: 0 10px 0 rgba(0,0,0,.14), 0 24px 60px rgba(0,0,0,.35);
+    transform: translateY(24px) scale(.96); transition: transform .45s cubic-bezier(.2,1.4,.4,1);
+  }
+  .screen.show .card { transform: none; }
+  /* カードの中の左右の組（縦向きでは箱を作らず、今までどおり縦に並ぶ。横向きの画面だけ2列にする） */
+  .card-a, .card-b { display: contents; }
+  .pill {
+    display: inline-block; background: var(--sub); color: var(--on-color);
+    font-size: 13px; font-weight: 800; letter-spacing: .06em;
+    padding: 4px 14px; border-radius: 99px;
+    word-break: keep-all; overflow-wrap: anywhere; /* 日本語の単語の途中で折り返さない */
+  }
+  .mascot { width: 116px; height: 116px; margin: 10px auto 2px; animation: bob 2.4s ease-in-out infinite; }
+  .mascot svg { width: 100%; height: 100%; overflow: visible; }
+  @keyframes bob { 0%,100% { transform: translateY(0) rotate(-4deg); } 50% { transform: translateY(-8px) rotate(4deg); } }
+  .mascot[hidden] + h1 { margin-top: 10px; } /* 絵なし（art: "none"）のとき、店名の札と見出しの間をあける */
+  h1 {
+    font-size: clamp(24px, 7.6vw, 36px); font-weight: 900; line-height: 1.15; color: var(--main);
+    word-break: keep-all; overflow-wrap: anywhere;
+    text-shadow: 0 3px 0 color-mix(in srgb, var(--main) 30%, var(--card));
+    margin-bottom: 6px;
+  }
+  .rule { font-size: 16px; font-weight: 800; margin-bottom: 12px; word-break: keep-all; overflow-wrap: anywhere; }
+  .rule b { color: var(--main); }
+  .rule-note { font-size: 13px; font-weight: 800; opacity: .75; margin: -8px 0 10px; word-break: keep-all; overflow-wrap: anywhere; }
+  .legend { list-style: none; display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 16px; }
+  .legend li {
+    background: color-mix(in srgb, var(--sub) 9%, var(--card)); border-radius: 16px; padding: 8px 4px 6px;
+    font-size: 12px; font-weight: 800; line-height: 1.3;
+  }
+  .legend .ico { width: 42px; height: 42px; margin: 0 auto 2px; }
+  .legend .ico svg { width: 100%; height: 100%; overflow: visible; }
+  .legend .pt { font-size: 17px; font-weight: 900; color: var(--main); }
+  .legend .pt.minus { color: var(--minus); }
+  .big-btn {
+    display: block; width: 100%; border: 0; cursor: pointer;
+    font: inherit; font-size: 26px; font-weight: 900; letter-spacing: .1em; color: var(--on-color);
+    background: var(--main);
+    background-image: linear-gradient(180deg, rgba(255,255,255,.25), rgba(255,255,255,0));
+    padding: 17px 10px; border-radius: 999px;
+    box-shadow: 0 7px 0 color-mix(in srgb, var(--main) 65%, #000), 0 12px 24px rgba(0,0,0,.2);
+    touch-action: manipulation;
+    transition: transform .08s ease, box-shadow .08s ease;
+  }
+  .big-btn:active { transform: translateY(5px); box-shadow: 0 2px 0 color-mix(in srgb, var(--main) 65%, #000); }
+  .big-btn:focus-visible { outline: 4px solid var(--sub); outline-offset: 4px; }
+  .big-btn:disabled { filter: grayscale(.4) brightness(.95); }
+  .big-btn.pulse { animation: pulse 1.4s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.04); } }
+  .best-line { margin-top: 12px; font-size: 14px; font-weight: 800; opacity: .75; }
+  .best-line span { font-variant-numeric: tabular-nums; }
+
+  /* 結果画面 */
+  .result-title { font-size: 22px; font-weight: 900; margin: 8px 0 4px; letter-spacing: .1em; }
+  .rank-wrap { position: relative; width: 128px; height: 128px; margin: 4px auto 4px; display: grid; place-items: center; }
+  .rank-wrap::before {
+    content: ""; position: absolute; inset: -18px; border-radius: 50%;
+    background: repeating-conic-gradient(from 0deg, var(--rank, #ffb800) 0deg 12deg, transparent 12deg 30deg);
+    opacity: .28; animation: spin 12s linear infinite;
+    -webkit-mask: radial-gradient(circle, #000 45%, transparent 71%); mask: radial-gradient(circle, #000 45%, transparent 71%);
+  }
+  .rank-badge {
+    position: relative; width: 112px; height: 112px; border-radius: 50%;
+    background: var(--rank, #ffb800);
+    background-image: radial-gradient(circle at 35% 30%, rgba(255,255,255,.55), rgba(255,255,255,0) 55%);
+    border: 5px solid #fff; box-shadow: 0 6px 0 rgba(0,0,0,.15), 0 0 0 4px var(--rank, #ffb800);
+    display: grid; place-items: center;
+    font-size: 70px; font-weight: 900; color: #fff; line-height: 1;
+    text-shadow: 0 4px 0 rgba(0,0,0,.18);
+  }
+  .screen.show .rank-badge { animation: stamp .55s cubic-bezier(.2,1.6,.4,1) .15s both; }
+  @keyframes stamp { 0% { transform: scale(2.4) rotate(-20deg); opacity: 0; } 100% { transform: none; opacity: 1; } }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .rank-title { font-size: 20px; font-weight: 900; color: var(--rank, var(--main)); }
+  .final-score { font-size: 58px; font-weight: 900; line-height: 1.05; font-variant-numeric: tabular-nums; }
+  .final-score small { font-size: 20px; margin-left: 4px; }
+  .new-best {
+    display: inline-block; margin: 2px 0 4px; padding: 3px 12px; border-radius: 99px;
+    background: #ffe066; color: #7a4b00; font-size: 14px; font-weight: 900;
+    animation: bump .5s ease-out 3;
+  }
+  .new-best[hidden] { display: none; }
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 8px 0 12px; }
+  .stats div { background: color-mix(in srgb, var(--sub) 9%, var(--card)); border-radius: 14px; padding: 6px 2px; }
+  .stats dt { font-size: 11px; font-weight: 800; opacity: .7; }
+  .stats dd { font-size: 19px; font-weight: 900; font-variant-numeric: tabular-nums; }
+  .prize {
+    border: 3px dashed var(--main); border-radius: 20px; padding: 10px 10px 12px; margin-bottom: 16px;
+    background: color-mix(in srgb, var(--main) 7%, var(--card));
+  }
+  .prize-label { display: inline-block; font-size: 12px; font-weight: 900; color: var(--on-color); background: var(--main); border-radius: 99px; padding: 2px 12px; }
+  /* 日本語の単語の途中で折り返さない（空白の所で折り返す。空白のない長い名前だけは途中で折り返す） */
+  .prize-text { font-size: clamp(18px, 5.9vw, 22px); font-weight: 900; margin: 4px 0 2px; word-break: keep-all; overflow-wrap: anywhere; }
+  .prize-note { font-size: 14px; font-weight: 800; color: var(--main); }
+  .sample-note { font-size: 12px; font-weight: 800; line-height: 1.4; color: var(--ink-soft); }
+  .prize .sample-note { margin-top: 3px; }
+  .best-line + .sample-note { margin-top: 6px; }
+
+  /* 設定の間違いを知らせる画面（お店の人向け） */
+  #errorScreen .card { text-align: left; }
+  .err-title { font-size: 18px; font-weight: 900; line-height: 1.5; color: #b3261e; }
+  .err-lead { margin: 8px 0 10px; font-size: 13px; font-weight: 800; line-height: 1.7; }
+  .err-list { padding-left: 1.4em; font-size: 13px; font-weight: 700; line-height: 1.7; }
+  .err-list li { margin-bottom: 4px; overflow-wrap: anywhere; }
+
+  #credit {
+    position: fixed; right: 10px; bottom: calc(env(safe-area-inset-bottom, 0px) + 6px); z-index: 20;
+    font-size: 11px; font-weight: 800; letter-spacing: .04em; color: color-mix(in srgb, var(--on-bg) 75%, transparent);
+    pointer-events: none; text-shadow: 0 1px 2px rgba(0,0,0,.3);
+  }
+
+  @media (max-height: 640px) {
+    .mascot { width: 84px; height: 84px; margin-top: 4px; }
+    .rank-wrap { width: 100px; height: 100px; }
+    .rank-badge { width: 88px; height: 88px; font-size: 54px; }
+    .final-score { font-size: 46px; }
+    .legend { margin-bottom: 12px; }
+    .big-btn { padding: 14px 10px; font-size: 23px; }
+  }
+
+  /* 縦が短い画面：結果画面をスクロールなしで「もう一度あそぶ」まで見せるため、余白と文字を縮める */
+  @media (max-height: 700px) {
+    #resultScreen .card { padding: 16px 18px 18px; }
+    .result-title { font-size: 19px; margin: 4px 0 2px; }
+    .rank-wrap { width: 100px; height: 100px; }
+    .rank-badge { width: 88px; height: 88px; font-size: 54px; }
+    .final-score { font-size: 48px; }
+    .stats { margin: 6px 0 10px; }
+    .prize { padding: 8px 10px 10px; margin-bottom: 14px; }
+  }
+  /* さらに縦が短い画面（iPhone SE の Safari など） */
+  @media (max-height: 600px) {
+    #resultScreen .card { padding: 14px 16px 16px; }
+    .result-title { font-size: 17px; margin: 2px 0 0; }
+    .rank-wrap { width: 76px; height: 76px; margin: 2px auto; }
+    .rank-wrap::before { inset: -12px; }
+    .rank-badge { width: 66px; height: 66px; font-size: 40px; border-width: 4px; box-shadow: 0 4px 0 rgba(0,0,0,.15), 0 0 0 3px var(--rank, #ffb800); }
+    .rank-title { font-size: 17px; }
+    .final-score { font-size: 40px; }
+    .final-score small { font-size: 16px; }
+    .new-best { margin: 0 0 2px; padding: 2px 10px; font-size: 13px; }
+    .stats { margin: 4px 0 8px; }
+    .stats div { padding: 4px 2px; }
+    .stats dd { font-size: 17px; }
+    .prize { padding: 6px 10px 8px; margin-bottom: 12px; }
+    .prize-note { font-size: 13px; }
+    #resultScreen .big-btn { padding: 12px 10px; font-size: 21px; }
+    /* スタート画面：見本の注意書きを足しても、スクロールなしで収まるように */
+    .mascot { width: 76px; height: 76px; }
+    .best-line { margin-top: 8px; }
+    .best-line + .sample-note { margin-top: 2px; }
+  }
+
+  /* 横向きで、縦が短い画面（スマホを横にしたとき）：カードを左右2列にして、ボタンと景品がスクロールなしで見えるようにする */
+  @media (orientation: landscape) and (max-height: 520px) {
+    .screen { padding-top: calc(env(safe-area-inset-top, 0px) + 10px); padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 22px); }
+    #titleScreen .card, #resultScreen .card {
+      display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 22px; align-items: center;
+      max-width: 640px; padding: 16px 20px 18px;
+    }
+    .card-a, .card-b { display: block; min-width: 0; }
+    h1 { font-size: clamp(22px, 4.2vw, 30px); }
+    .mascot { width: 72px; height: 72px; margin: 6px auto 2px; }
+    .legend { gap: 6px; margin-bottom: 10px; }
+    .legend li { padding: 6px 4px 4px; }
+    .legend .ico { width: 30px; height: 30px; }
+    .big-btn { padding: 12px 10px; font-size: 22px; }
+    .best-line { margin-top: 8px; }
+    .best-line + .sample-note { margin-top: 2px; }
+    #resultScreen .card { padding: 14px 20px 16px; }
+    .result-title { font-size: 17px; margin: 4px 0 0; }
+    .rank-wrap { width: 76px; height: 76px; margin: 2px auto; }
+    .rank-wrap::before { inset: -12px; }
+    .rank-badge { width: 66px; height: 66px; font-size: 40px; border-width: 4px; box-shadow: 0 4px 0 rgba(0,0,0,.15), 0 0 0 3px var(--rank, #ffb800); }
+    .rank-title { font-size: 17px; }
+    .final-score { font-size: 40px; }
+    .final-score small { font-size: 16px; }
+    .stats { margin: 0 0 8px; }
+    .stats div { padding: 4px 2px; }
+    .stats dd { font-size: 17px; }
+    .prize { padding: 6px 10px 8px; margin-bottom: 12px; }
+    .prize-text { font-size: 18px; line-height: 1.3; margin: 3px 0 2px; }
+    .prize-note { font-size: 13px; }
+    #resultScreen .big-btn { padding: 11px 10px; font-size: 21px; }
+  }
+
+  /* 動きを減らす設定の人向け */
+  @media (prefers-reduced-motion: reduce) {
+    .mascot, .big-btn.pulse, .rank-wrap::before, body.final #barFill, .new-best,
+    .screen.show .rank-badge, .bump, .tick { animation: none !important; }
+    #banner span.count, #banner span.msg, #banner span.finalmsg { animation-name: fadeOnly; }
+    .card { transition: none; transform: none; }
+    #flash { display: none; } /* 雲に触れたときの赤い点滅を出さない */
+  }
+</style>
+</head>
+<body>
+  <canvas id="field" aria-label="ゲーム画面"></canvas>
+  <div id="flash"></div>
+
+  <header id="hud" class="off" aria-live="off">
+    <div class="hud-row">
+      <div class="hud-box"><span class="hud-label" id="hudScore"></span><span class="hud-val" id="score">0</span></div>
+      <div class="hud-box" id="comboBox"><span class="hud-label" id="hudCombo"></span><span class="hud-val"><span id="combo">0</span><small id="mult">×1</small></span></div>
+      <div class="hud-box"><span class="hud-label" id="hudTime"></span><span class="hud-val"><span id="time">30</span><small id="secUnit"></small></span></div>
+    </div>
+    <div class="bar"><div id="barFill"></div></div>
+  </header>
+
+  <div id="banner" aria-live="assertive"></div>
+
+  <section id="titleScreen" class="screen show" aria-label="スタート画面">
+    <div class="card">
+      <div class="card-a">
+        <span class="pill" data-config="shopName"></span>
+        <div class="mascot" id="mascot" aria-hidden="true"></div>
+        <h1 data-config="eventName"></h1>
+        <p class="rule" id="rule"></p>
+        <p class="rule-note" id="ruleNote"></p>
+      </div>
+      <div class="card-b">
+        <ul class="legend" id="legend"></ul>
+        <button class="big-btn pulse" id="startBtn" type="button"></button>
+        <p class="best-line"><span id="bestLabel"></span> <span id="titleBest">0</span> <span id="bestUnit"></span></p>
+        <p class="sample-note" id="titleSample"></p>
+      </div>
+    </div>
+  </section>
+
+  <section id="resultScreen" class="screen" aria-label="結果画面">
+    <div class="card">
+      <div class="card-a">
+        <span class="pill" data-config="shopName"></span>
+        <p class="result-title" id="resultTitle"></p>
+        <div class="rank-wrap"><div class="rank-badge" id="rankLetter">S</div></div>
+        <p class="rank-title" id="rankTitle"></p>
+        <p class="final-score"><span id="finalScore">0</span><small id="scoreUnit"></small></p>
+        <p class="new-best" id="newBest" hidden></p>
+      </div>
+      <div class="card-b">
+      <dl class="stats">
+        <div><dt id="statBest"></dt><dd id="resBest">0</dd></div>
+        <div><dt id="statCombo"></dt><dd id="resCombo">0</dd></div>
+        <div><dt id="statHits"></dt><dd id="resHits">0</dd></div>
+      </dl>
+      <div class="prize">
+        <span class="prize-label" id="prizeLabel"></span>
+        <p class="prize-text" id="prizeText"></p>
+        <p class="prize-note" id="prizeNote"></p>
+        <p class="sample-note" id="prizeSample"></p>
+      </div>
+      <button class="big-btn" id="retryBtn" type="button"></button>
+      </div>
+    </div>
+  </section>
+
+  <section id="errorScreen" class="screen" aria-label="設定の間違い" role="alert">
+    <div class="card">
+      <p class="err-title">設定（CONFIG）に間違いがあるため、ゲームを始められません</p>
+      <p class="err-lead">このファイルの上の方にある CONFIG の、次の所を直してください。</p>
+      <ul class="err-list" id="errList"></ul>
+    </div>
+  </section>
+
+  <div id="credit"></div>
+
+<script id="game-main">
+(function () {
+  "use strict";
+  var C = (typeof CONFIG !== "undefined") ? CONFIG : null, L = GameLogic;
+  var reduceMotion = false;
+  try { reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (e) {}
+
+  var $ = function (id) { return document.getElementById(id); };
+
+  // 起動のときに設定を確かめる。間違いがあれば、何が違うかを画面に出して止める
+  var problems = L.checkConfig(C);
+  if (problems.length) {
+    var list = $("errList");
+    problems.forEach(function (m) { var li = document.createElement("li"); li.textContent = m; list.appendChild(li); });
+    if (window.console && console.warn) console.warn("CONFIG に間違いがあります:\n" + problems.join("\n"));
+    $("titleScreen").classList.remove("show");
+    $("errorScreen").classList.add("show");
+    return;
+  }
+
+  // 画面の文（texts に無い物は、ここに書いた文を使う）
+  var T = (C.texts && typeof C.texts === "object") ? C.texts : {};
+  function txt(k, def) { return typeof T[k] === "string" ? T[k] : def; }
+  // {n} などを置きかえる（「$&」などが入っていても、そのまま入るように関数で渡す）
+  function fill(s, map) {
+    return String(s).replace(/\{(\w+)\}/g, function (m, k) {
+      return Object.prototype.hasOwnProperty.call(map, k) ? String(map[k]) : m;
+    });
+  }
+
+  /* ---------- 設定を画面に反映 ---------- */
+  var rootStyle = document.documentElement.style;
+  rootStyle.setProperty("--main", C.colors.main);
+  rootStyle.setProperty("--sub", C.colors.sub);
+  rootStyle.setProperty("--bg1", C.colors.bgTop);
+  rootStyle.setProperty("--bg2", C.colors.bgBottom);
+  rootStyle.setProperty("--final1", C.colors.finalTop);
+  rootStyle.setProperty("--final2", C.colors.finalBottom);
+  [["--card", "card"], ["--ink", "ink"], ["--ink-soft", "inkSoft"], ["--minus", "minus"], ["--on-bg", "onBg"], ["--on-color", "onColor"]].forEach(function (p) {
+    if (C.colors[p[1]]) rootStyle.setProperty(p[0], C.colors[p[1]]);
+  });
+  document.title = C.eventName + "｜" + C.shopName;
+  var themeMeta = document.querySelector('meta[name="theme-color"]');
+  if (themeMeta) themeMeta.setAttribute("content", C.colors.bgTop);
+  Array.prototype.forEach.call(document.querySelectorAll("[data-config]"), function (el) {
+    el.textContent = C[el.getAttribute("data-config")];
+  });
+  $("credit").textContent = C.credit || "";
+  $("prizeNote").textContent = C.prizeNote || "";
+  // スタート画面の説明（{time} の所は、制限時間を太字で出す）
+  (function (el, tmpl) {
+    el.textContent = "";
+    tmpl.split("{time}").forEach(function (part, i) {
+      if (i > 0) { var b = document.createElement("b"); b.textContent = C.timeLimit; el.appendChild(b); }
+      el.appendChild(document.createTextNode(part));
+    });
+  })($("rule"), txt("rule", "{time}秒で 星をたくさんタップしよう！"));
+  [["ruleNote", "ruleNote", "星を取りのがすと コンボが切れるよ"], ["startBtn", "start", "スタート"],
+   ["bestLabel", "bestLabel", "自己ベスト"], ["bestUnit", "pointUnit", "点"], ["scoreUnit", "pointUnit", "点"],
+   ["hudScore", "hudScore", "スコア"], ["hudCombo", "hudCombo", "コンボ"], ["hudTime", "hudTime", "のこり"],
+   ["secUnit", "secUnit", "秒"], ["resultTitle", "resultTitle", "けっか発表"], ["newBest", "newBest", "自己ベスト更新！"],
+   ["statBest", "statBest", "自己ベスト"], ["statCombo", "statCombo", "最大コンボ"], ["statHits", "statHits", "タッチした星"],
+   ["prizeLabel", "prizeLabel", "景品"], ["retryBtn", "retry", "もう一度あそぶ"]].forEach(function (a) {
+    $(a[0]).textContent = txt(a[1], a[2]);
+  });
+  ["titleSample", "prizeSample"].forEach(function (id) {
+    $(id).textContent = C.sampleNote || "";
+    $(id).hidden = !C.sampleNote;
+  });
+
+  /* ---------- 絵（SVG）を作る ---------- */
+  function starPoints(cx, cy, R, r) {
+    var pts = [];
+    for (var i = 0; i < 10; i++) {
+      var rad = i % 2 ? r : R, a = -Math.PI / 2 + i * Math.PI / 5;
+      pts.push((cx + Math.cos(a) * rad).toFixed(1) + "," + (cy + Math.sin(a) * rad).toFixed(1));
+    }
+    return pts.join(" ");
+  }
+  function faceSVG(cx, cy, s) {
+    return '<ellipse cx="' + (cx - s * 0.36) + '" cy="' + (cy + s * 0.17) + '" rx="' + s * 0.12 + '" ry="' + s * 0.07 + '" fill="#ff5d8f" opacity=".45"/>' +
+      '<ellipse cx="' + (cx + s * 0.36) + '" cy="' + (cy + s * 0.17) + '" rx="' + s * 0.12 + '" ry="' + s * 0.07 + '" fill="#ff5d8f" opacity=".45"/>' +
+      '<circle cx="' + (cx - s * 0.2) + '" cy="' + cy + '" r="' + s * 0.085 + '" fill="#3a2a4a"/>' +
+      '<circle cx="' + (cx + s * 0.2) + '" cy="' + cy + '" r="' + s * 0.085 + '" fill="#3a2a4a"/>' +
+      '<circle cx="' + (cx - s * 0.17) + '" cy="' + (cy - s * 0.03) + '" r="' + s * 0.03 + '" fill="#fff"/>' +
+      '<circle cx="' + (cx + s * 0.23) + '" cy="' + (cy - s * 0.03) + '" r="' + s * 0.03 + '" fill="#fff"/>' +
+      '<path d="M' + (cx - s * 0.12) + ' ' + (cy + s * 0.13) + ' Q' + cx + ' ' + (cy + s * 0.28) + ' ' + (cx + s * 0.12) + ' ' + (cy + s * 0.13) + '" fill="none" stroke="#3a2a4a" stroke-width="' + s * 0.06 + '" stroke-linecap="round"/>';
+  }
+  function starSVG(color, withSparkle) {
+    var sparkle = withSparkle
+      ? '<path d="M88 14 L91 22 L99 25 L91 28 L88 36 L85 28 L77 25 L85 22 Z" fill="#fff"/><path d="M14 70 L16 75 L21 77 L16 79 L14 84 L12 79 L7 77 L12 75 Z" fill="#fff"/>'
+      : "";
+    return '<svg viewBox="0 0 100 100" aria-hidden="true">' +
+      '<polygon points="' + starPoints(50, 55, 40, 20) + '" fill="' + color + '" stroke="' + color + '" stroke-width="12" stroke-linejoin="round"/>' +
+      '<polygon points="' + starPoints(44, 46, 13, 6.5) + '" fill="#fff" opacity=".35"/>' +
+      faceSVG(50, 56, 40) + sparkle + "</svg>";
+  }
+  function cloudSVG() {
+    var blobs = [[28, 58, 20], [72, 58, 20], [42, 42, 23], [60, 45, 21], [50, 64, 21]];
+    var rim = "", body = "";
+    blobs.forEach(function (b) {
+      rim += '<circle cx="' + b[0] + '" cy="' + b[1] + '" r="' + (b[2] + 3) + '" fill="#fff" opacity=".7"/>';
+      body += '<circle cx="' + b[0] + '" cy="' + b[1] + '" r="' + b[2] + '" fill="#3b3550"/>';
+    });
+    return '<svg viewBox="0 0 100 100" aria-hidden="true">' + rim + body +
+      '<path d="M34 45 L45 50 M66 45 L55 50" stroke="#fff" stroke-width="4" stroke-linecap="round"/>' +
+      '<circle cx="41" cy="56" r="4.5" fill="#fff"/><circle cx="59" cy="56" r="4.5" fill="#fff"/>' +
+      '<path d="M40 70 L45 66 L50 70 L55 66 L60 70" fill="none" stroke="#fff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  }
+  // スタート画面の絵（"star" のときだけ星のマスコットを出す）
+  if (C.art === "star") $("mascot").innerHTML = starSVG(C.colors.gold, true);
+  else $("mascot").hidden = true;
+  function fmtPt(n) { return (n > 0 ? "+" : "") + n; }
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  $("legend").innerHTML =
+    '<li><div class="ico">' + starSVG(C.colors.stars[0] || "#ff9fcb", false) + '</div>' + esc(txt("legendStar", "星")) + '<br><span class="pt">' + fmtPt(C.points.star) + '</span></li>' +
+    '<li><div class="ico">' + starSVG(C.colors.gold, true) + '</div>' + esc(txt("legendGold", "金の星")) + '<br><span class="pt">' + fmtPt(C.points.gold) + '</span></li>' +
+    '<li><div class="ico">' + cloudSVG() + '</div>' + esc(txt("legendCloud", "黒い雲")) + '<br><span class="pt' + (C.points.cloud < 0 ? ' minus' : '') + '">' + fmtPt(C.points.cloud) + '</span></li>';
+
+  /* ---------- 自己ベスト（使えない環境でも動くように） ---------- */
+  function loadBest() {
+    try {
+      var n = parseInt(window.localStorage.getItem(C.storageKey), 10);
+      return isFinite(n) && n > 0 ? n : 0;
+    } catch (e) { return 0; }
+  }
+  function saveBest(n) {
+    try { window.localStorage.setItem(C.storageKey, String(n)); } catch (e) {}
+  }
+  var best = loadBest();
+  function fmt(n) { return Math.round(n).toLocaleString("ja-JP"); }
+  $("titleBest").textContent = fmt(best);
+
+  /* ---------- キャンバス ---------- */
+  var cv = $("field"), ctx = cv.getContext("2d");
+  var W = 0, H = 0, DPR = 1, hudBottom = 100;
+  function resize() {
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    W = window.innerWidth; H = window.innerHeight;
+    cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
+    measureHud();
+  }
+  // 上部表示の下端を測る（隠すときの上ずらしに左右されないよう、offset の値で測る）
+  function measureHud() {
+    var hud = $("hud");
+    hudBottom = hud.offsetTop + hud.offsetHeight;
+  }
+  window.addEventListener("resize", resize);
+  resize();
+
+  /* ---------- 状態 ---------- */
+  var phase = "title";          // title → countdown → play → finish → result
+  var state = { score: 0, combo: 0, maxCombo: 0 };
+  var hits = 0, timeLeft = C.timeLimit, isFinal = false;
+  var cd = 0, cdShown = 0, spawnTimer = 0, clock = 0, shake = 0;
+  var targets = [], particles = [], rings = [], floaters = [];
+  var ambient = [];
+  for (var i = 0; i < 46; i++) {
+    ambient.push({ x: Math.random(), y: Math.random(), s: 0.8 + Math.random() * 1.8, ph: Math.random() * 6.3, sp: 1 + Math.random() * 2 });
+  }
+
+  /* ---------- 表示の更新 ---------- */
+  var elScore = $("score"), elCombo = $("combo"), elMult = $("mult"), elTime = $("time"), elBar = $("barFill"), elComboBox = $("comboBox");
+  var shownTime = -1;
+  function restartAnim(el, cls) {
+    if (reduceMotion) return;
+    el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls);
+  }
+  function multText(m) { return "×" + (Math.round(m * 10) / 10); }
+  function renderScore(bump) {
+    elScore.textContent = fmt(state.score);
+    elCombo.textContent = state.combo;
+    var m = L.comboMultiplier(state.combo, C.combo);
+    elMult.textContent = multText(m);
+    elComboBox.classList.toggle("hot", m > 1);
+    if (bump) { restartAnim(elScore, "bump"); restartAnim(elComboBox, "bump"); }
+  }
+  function renderTime() {
+    var t = Math.max(0, Math.ceil(timeLeft));
+    if (t !== shownTime) {
+      shownTime = t; elTime.textContent = t;
+      if (isFinal) restartAnim(elTime, "tick");
+    }
+    elBar.style.transform = "scaleX(" + Math.max(0, timeLeft / C.timeLimit) + ")";
+  }
+
+  function showBanner(text, cls, ms) {
+    var b = $("banner");
+    b.textContent = "";
+    var s = document.createElement("span");
+    s.className = cls; s.textContent = text;
+    s.style.setProperty("--dur", ms + "ms");
+    b.appendChild(s);
+  }
+
+  function flashRed() {
+    if (reduceMotion) return; // 動きを減らす設定では、赤い点滅を出さない
+    var f = $("flash");
+    f.classList.add("on");
+    setTimeout(function () { f.classList.remove("on"); }, 60);
+  }
+
+  /* ---------- 流れ ---------- */
+  function startGame() {
+    state = { score: 0, combo: 0, maxCombo: 0 };
+    hits = 0; timeLeft = C.timeLimit; isFinal = false; shownTime = -1;
+    targets = []; particles = []; rings = []; floaters = [];
+    document.body.classList.remove("final");
+    $("titleScreen").classList.remove("show");
+    $("resultScreen").classList.remove("show");
+    $("hud").classList.remove("off");
+    renderScore(false); renderTime();
+    measureHud();
+    phase = "countdown"; cd = 3; cdShown = 0;
+  }
+  function startPlay() {
+    measureHud(); // フォントの読み込みが遅れても、プレイ開始の時点で測り直す
+    phase = "play";
+    spawnTimer = 0.2;
+    showBanner(txt("go", "スタート！"), "msg", 750);
+  }
+  function enterFinal() {
+    isFinal = true;
+    document.body.classList.add("final");
+    showBanner(txt("lastSpurt", "ラストスパート！"), "finalmsg", 1100);
+  }
+  function finishPlay() {
+    phase = "finish";
+    timeLeft = 0; renderTime();
+    targets.forEach(function (t) { if (!t.leaving) { t.leaving = true; t.leaveAge = 0; } });
+    showBanner(txt("finish", "しゅうりょう！"), "msg", 1200);
+    setTimeout(showResult, 1300);
+  }
+  function showResult() {
+    phase = "result";
+    isFinal = false; // ラストスパートの状態を戻す（結果画面で背景のきらきらが速く落ち続けないように）
+    var rank = L.getRank(state.score, C.ranks) || { rank: "-", color: C.colors.main, title: "", prize: "" };
+    var isNew = L.isNewBest(state.score, best);
+    if (isNew) { best = state.score; saveBest(best); }
+    document.body.classList.remove("final");
+    $("hud").classList.add("off");
+    var rs = $("resultScreen");
+    rs.style.setProperty("--rank", rank.color || C.colors.main);
+    $("rankLetter").textContent = rank.rank;
+    $("rankTitle").textContent = rank.title || "";
+    $("prizeText").textContent = rank.prize;
+    $("newBest").hidden = !isNew;
+    $("resBest").textContent = fmt(best);
+    $("resCombo").textContent = state.maxCombo;
+    $("resHits").textContent = hits;
+    $("titleBest").textContent = fmt(best);
+    countUp($("finalScore"), state.score);
+    var btn = $("retryBtn");
+    btn.disabled = true; // 終わりぎわの連打で、すぐ次が始まらないように
+    setTimeout(function () { btn.disabled = false; }, 700);
+    rs.classList.add("show");
+    celebrate(rank);
+  }
+  function countUp(el, to) {
+    if (reduceMotion || to <= 0) { el.textContent = fmt(to); return; }
+    var t0 = performance.now(), dur = 900;
+    (function step(now) {
+      var k = Math.min(1, (now - t0) / dur);
+      el.textContent = fmt(to * (1 - Math.pow(1 - k, 3)));
+      if (k < 1) requestAnimationFrame(step);
+    })(t0);
+  }
+
+  $("startBtn").addEventListener("click", function () { if (phase === "title") startGame(); });
+  $("retryBtn").addEventListener("click", function () { if (phase === "result") startGame(); });
+
+  /* ---------- ターゲットを出す ---------- */
+  function playArea() {
+    var maxW = 760;
+    var left = Math.max(8, (W - maxW) / 2), right = Math.min(W - 8, left + maxW);
+    return { left: left, right: right, top: hudBottom + 8, bottom: H - 34 };
+  }
+  function spawnTarget() {
+    var alive = 0;
+    for (var i = 0; i < targets.length; i++) if (!targets[i].leaving) alive++;
+    if (alive >= C.spawn.maxOnScreen) return;
+    var type = L.pickType(Math.random(), C.spawn);
+    var base = Math.max(30, Math.min(54, Math.min(W, H) * 0.09));
+    var r = base * (type === "gold" ? 0.9 : type === "cloud" ? 1.1 : 1) * (0.92 + Math.random() * 0.16);
+    var a = playArea(), x = 0, y = 0;
+    for (var tries = 0; tries < 14; tries++) {
+      x = a.left + r + Math.random() * Math.max(1, a.right - a.left - 2 * r);
+      y = a.top + r + Math.random() * Math.max(1, a.bottom - a.top - 2 * r);
+      var ok = true;
+      for (var j = 0; j < targets.length; j++) {
+        var t = targets[j], dx = t.x - x, dy = t.y - y, min = t.r + r + 12;
+        if (dx * dx + dy * dy < min * min) { ok = false; break; }
+      }
+      if (ok) break;
+    }
+    var speedCfg = isFinal ? C.spawn.finalSpeed : C.spawn.speed;
+    var speed = typeof speedCfg === "number" && isFinite(speedCfg) ? Math.max(0, speedCfg) : (isFinal ? 40 : 18);
+    targets.push({
+      type: type, x: x, y: y, r: r, age: 0,
+      life: (isFinal ? C.spawn.finalLife : C.spawn.life) * (type === "cloud" ? 1.25 : type === "gold" ? 0.85 : 1),
+      vx: (Math.random() - 0.5) * 2 * speed, vy: (Math.random() - 0.5) * 2 * speed,
+      rot: 0, seed: Math.random() * 6.3,
+      color: C.colors.stars[Math.floor(Math.random() * C.colors.stars.length)] || "#ff9fcb",
+      leaving: false, leaveAge: 0
+    });
+  }
+
+  /* ---------- タップ ---------- */
+  cv.addEventListener("pointerdown", function (e) {
+    if (phase !== "play") return;
+    e.preventDefault();
+    var x = e.clientX, y = e.clientY;
+    for (var i = targets.length - 1; i >= 0; i--) {
+      var t = targets[i];
+      if (t.leaving) continue;
+      var hr = Math.max(t.r * 1.2, 30), dx = x - t.x, dy = y - t.y;
+      if (dx * dx + dy * dy <= hr * hr) { hitTarget(t, i); return; }
+    }
+    rings.push({ x: x, y: y, age: 0, life: 0.3, color: "255,255,255", maxR: 20, w: 2 });
+  }, { passive: false });
+
+  function hitTarget(t, index) {
+    var prevMult = L.comboMultiplier(state.combo, C.combo);
+    var res = L.applyHit(state, t.type, C);
+    state = { score: res.score, combo: res.combo, maxCombo: res.maxCombo };
+    targets.splice(index, 1);
+    if (t.type !== "cloud") {
+      hits++;
+      var col = t.type === "gold" ? C.colors.gold : t.color;
+      burst(t.x, t.y, col, t.type === "gold" ? 22 : 12);
+      rings.push({ x: t.x, y: t.y, age: 0, life: 0.4, color: hexToRgb(col), maxR: t.r * 2, w: 5 });
+      floaters.push({ x: t.x, y: t.y - t.r * 0.4, text: "+" + res.gained, color: t.type === "gold" ? "#ffe066" : "#fff", size: t.type === "gold" ? 34 : 26, age: 0, life: 0.8 });
+      if (res.multiplier > prevMult) {
+        var a = playArea();
+        floaters.push({ x: W / 2, y: a.top + 70, text: fill(txt("comboUp", "{n}コンボ！"), { n: res.combo }) + " " + multText(res.multiplier), color: "#ffe066", size: 32, age: 0, life: 1.1, big: true });
+      }
+    } else {
+      shake = 0.3;
+      flashRed();
+      burst(t.x, t.y, "#3b3550", 10);
+      // 実際に変わった点数だけを出す（0点のときや雲の点数が 0 のときは数字を出さない）
+      if (res.gained !== 0) {
+        floaters.push({ x: t.x, y: t.y - t.r * 0.4, text: fmtPt(res.gained), color: "#ff4d7d", size: 30, age: 0, life: 0.9 });
+      }
+    }
+    renderScore(true);
+  }
+
+  function hexToRgb(hex) {
+    var m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex || "");
+    return m ? parseInt(m[1], 16) + "," + parseInt(m[2], 16) + "," + parseInt(m[3], 16) : "255,255,255";
+  }
+  function burst(x, y, color, n) {
+    if (reduceMotion) return;
+    for (var i = 0; i < n; i++) {
+      var a = Math.random() * Math.PI * 2, sp = 120 + Math.random() * 260;
+      particles.push({ x: x, y: y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 60, g: 520,
+        age: 0, life: 0.5 + Math.random() * 0.35, size: 4 + Math.random() * 6, color: i % 3 === 0 ? "#ffffff" : color,
+        rot: Math.random() * 6, vr: (Math.random() - 0.5) * 10 });
+    }
+  }
+  function celebrate(rank) {
+    if (reduceMotion) return;
+    var sorted = C.ranks.slice().sort(function (a, b) { return b.min - a.min; });
+    var idx = Math.max(0, sorted.indexOf(rank));
+    var n = Math.max(16, 70 - idx * 18);
+    var cols = C.colors.stars.concat([C.colors.gold, C.colors.main, "#ffffff"]);
+    for (var i = 0; i < n; i++) {
+      particles.push({ x: Math.random() * W, y: -20 - Math.random() * H * 0.5, vx: (Math.random() - 0.5) * 60, vy: 80 + Math.random() * 120, g: 40,
+        age: 0, life: 3 + Math.random() * 1.5, size: 5 + Math.random() * 7, color: cols[i % cols.length],
+        rot: Math.random() * 6, vr: (Math.random() - 0.5) * 4 });
+    }
+  }
+
+  /* ---------- 毎フレームの処理 ---------- */
+  function update(dt) {
+    clock += dt;
+    if (phase === "countdown") {
+      cd -= dt;
+      var n = Math.ceil(cd);
+      if (n > 0 && n !== cdShown) { cdShown = n; showBanner(String(n), "count", 950); }
+      if (cd <= 0) startPlay();
+    } else if (phase === "play") {
+      timeLeft -= dt;
+      if (!isFinal && C.finalSeconds > 0 && C.finalSeconds < C.timeLimit && timeLeft <= C.finalSeconds) enterFinal();
+      if (timeLeft <= 0) { finishPlay(); }
+      else {
+        spawnTimer -= dt;
+        if (spawnTimer <= 0) {
+          spawnTarget();
+          spawnTimer = (isFinal ? C.spawn.finalInterval : C.spawn.interval) * (0.75 + Math.random() * 0.5);
+        }
+        renderTime();
+      }
+    }
+
+    var a = playArea();
+    for (var i = targets.length - 1; i >= 0; i--) {
+      var t = targets[i];
+      t.age += dt;
+      if (!reduceMotion) {
+        t.x += t.vx * dt; t.y += t.vy * dt;
+        if (t.x < a.left + t.r) { t.x = a.left + t.r; t.vx = Math.abs(t.vx); }
+        if (t.x > a.right - t.r) { t.x = a.right - t.r; t.vx = -Math.abs(t.vx); }
+        if (t.y < a.top + t.r) { t.y = a.top + t.r; t.vy = Math.abs(t.vy); }
+        if (t.y > a.bottom - t.r) { t.y = a.bottom - t.r; t.vy = -Math.abs(t.vy); }
+        t.rot = Math.sin(clock * 3 + t.seed) * 0.14;
+      }
+      if (!t.leaving && t.age >= t.life) {
+        t.leaving = true; t.leaveAge = 0;
+        // 星を取り逃したらコンボが切れる
+        if (phase === "play" && t.type !== "cloud" && state.combo > 0) {
+          var res = L.applyMiss(state);
+          state = { score: res.score, combo: res.combo, maxCombo: res.maxCombo };
+          floaters.push({ x: t.x, y: t.y - t.r * 0.3, text: txt("miss", "おしい！"), color: "rgba(255,255,255,.85)", size: 18, age: 0, life: 0.7 });
+          renderScore(false);
+        }
+      }
+      if (t.leaving) {
+        t.leaveAge += dt;
+        if (t.leaveAge >= 0.22) targets.splice(i, 1);
+      }
+    }
+    for (i = particles.length - 1; i >= 0; i--) {
+      var p = particles[i];
+      p.age += dt; p.vy += p.g * dt; p.x += p.vx * dt; p.y += p.vy * dt; p.rot += p.vr * dt;
+      if (p.age >= p.life || p.y > H + 40) particles.splice(i, 1);
+    }
+    for (i = rings.length - 1; i >= 0; i--) { rings[i].age += dt; if (rings[i].age >= rings[i].life) rings.splice(i, 1); }
+    for (i = floaters.length - 1; i >= 0; i--) { floaters[i].age += dt; if (floaters[i].age >= floaters[i].life) floaters.splice(i, 1); }
+    if (shake > 0) shake = Math.max(0, shake - dt);
+
+    var fall = isFinal ? 0.12 : 0.012;
+    if (!reduceMotion) for (i = 0; i < ambient.length; i++) {
+      ambient[i].y += fall * dt * ambient[i].s;
+      if (ambient[i].y > 1.02) { ambient[i].y = -0.02; ambient[i].x = Math.random(); }
+    }
+  }
+
+  /* ---------- 描画 ---------- */
+  function easeOutBack(k) { var c1 = 1.9, c3 = c1 + 1; return 1 + c3 * Math.pow(k - 1, 3) + c1 * Math.pow(k - 1, 2); }
+  function traceStar(x, y, R, r) {
+    ctx.beginPath();
+    for (var i = 0; i < 10; i++) {
+      var rad = i % 2 ? r : R, a = -Math.PI / 2 + i * Math.PI / 5;
+      var px = x + Math.cos(a) * rad, py = y + Math.sin(a) * rad;
+      if (i) ctx.lineTo(px, py); else ctx.moveTo(px, py);
+    }
+    ctx.closePath();
+  }
+  function drawFace(s, excited) {
+    ctx.fillStyle = "rgba(255,93,143,.45)";
+    ctx.beginPath(); ctx.ellipse(-s * 0.36, s * 0.2, s * 0.12, s * 0.07, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(s * 0.36, s * 0.2, s * 0.12, s * 0.07, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = "#3a2a4a"; ctx.fillStyle = "#3a2a4a"; ctx.lineCap = "round"; ctx.lineWidth = s * 0.07;
+    if (excited) {
+      ctx.beginPath(); ctx.arc(-s * 0.2, s * 0.06, s * 0.09, Math.PI * 1.1, Math.PI * 1.9); ctx.stroke();
+      ctx.beginPath(); ctx.arc(s * 0.2, s * 0.06, s * 0.09, Math.PI * 1.1, Math.PI * 1.9); ctx.stroke();
+      ctx.beginPath(); ctx.arc(0, s * 0.12, s * 0.13, 0, Math.PI); ctx.closePath(); ctx.fill();
+    } else {
+      ctx.beginPath(); ctx.arc(-s * 0.2, s * 0.03, s * 0.085, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(s * 0.2, s * 0.03, s * 0.085, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "#fff";
+      ctx.beginPath(); ctx.arc(-s * 0.17, 0, s * 0.03, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(s * 0.23, 0, s * 0.03, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(-s * 0.12, s * 0.16); ctx.quadraticCurveTo(0, s * 0.31, s * 0.12, s * 0.16); ctx.stroke();
+    }
+  }
+  function drawStar(t, R) {
+    var isGold = t.type === "gold";
+    if (isGold) {
+      var halo = ctx.createRadialGradient(0, 0, R * 0.3, 0, 0, R * 1.8);
+      halo.addColorStop(0, "rgba(255,220,80,.55)"); halo.addColorStop(1, "rgba(255,220,80,0)");
+      ctx.fillStyle = halo; ctx.beginPath(); ctx.arc(0, 0, R * 1.8, 0, Math.PI * 2); ctx.fill();
+    } else {
+      ctx.fillStyle = "rgba(255,255,255,.12)"; ctx.beginPath(); ctx.arc(0, 0, R * 1.25, 0, Math.PI * 2); ctx.fill();
+    }
+    var fill;
+    if (isGold) {
+      fill = ctx.createLinearGradient(0, -R, 0, R);
+      fill.addColorStop(0, "#fff3a0"); fill.addColorStop(0.55, C.colors.gold); fill.addColorStop(1, "#ff9d00");
+    } else fill = t.color;
+    traceStar(0, R * 0.06, R, R * 0.5);
+    ctx.lineJoin = "round"; ctx.lineWidth = R * 0.26;
+    ctx.strokeStyle = fill; ctx.fillStyle = fill; ctx.stroke(); ctx.fill();
+    ctx.fillStyle = "rgba(255,255,255,.38)";
+    traceStar(-R * 0.16, -R * 0.2, R * 0.32, R * 0.16); ctx.fill();
+    drawFace(R, isGold);
+    if (isGold) {
+      ctx.fillStyle = "#fff";
+      for (var k = 0; k < 3; k++) {
+        var ang = clock * 2.2 + k * 2.09, d = R * 1.35, sz = R * (0.16 + 0.06 * Math.sin(clock * 6 + k));
+        sparkle(Math.cos(ang) * d, Math.sin(ang) * d, sz);
+      }
+    }
+  }
+  function sparkle(x, y, s) {
+    ctx.beginPath();
+    ctx.moveTo(x, y - s); ctx.lineTo(x + s * 0.28, y - s * 0.28); ctx.lineTo(x + s, y); ctx.lineTo(x + s * 0.28, y + s * 0.28);
+    ctx.lineTo(x, y + s); ctx.lineTo(x - s * 0.28, y + s * 0.28); ctx.lineTo(x - s, y); ctx.lineTo(x - s * 0.28, y - s * 0.28);
+    ctx.closePath(); ctx.fill();
+  }
+  var CLOUD_BLOBS = [[-0.5, 0.12, 0.44], [0.5, 0.12, 0.44], [-0.18, -0.2, 0.5], [0.22, -0.12, 0.48], [0, 0.24, 0.48]];
+  function drawCloud(t, R) {
+    var i, b;
+    ctx.fillStyle = "rgba(255,255,255,.7)";
+    for (i = 0; i < CLOUD_BLOBS.length; i++) { b = CLOUD_BLOBS[i]; ctx.beginPath(); ctx.arc(b[0] * R, b[1] * R, b[2] * R + 3, 0, Math.PI * 2); ctx.fill(); }
+    var g = ctx.createLinearGradient(0, -R * 0.7, 0, R * 0.7);
+    g.addColorStop(0, isFinal ? "#5d3b5e" : "#4c4566"); g.addColorStop(1, "#231f30");
+    ctx.fillStyle = g;
+    for (i = 0; i < CLOUD_BLOBS.length; i++) { b = CLOUD_BLOBS[i]; ctx.beginPath(); ctx.arc(b[0] * R, b[1] * R, b[2] * R, 0, Math.PI * 2); ctx.fill(); }
+    ctx.strokeStyle = "#fff"; ctx.fillStyle = "#fff"; ctx.lineCap = "round"; ctx.lineJoin = "round"; ctx.lineWidth = R * 0.08;
+    ctx.beginPath(); ctx.moveTo(-R * 0.34, -R * 0.06); ctx.lineTo(-R * 0.1, R * 0.05); ctx.moveTo(R * 0.34, -R * 0.06); ctx.lineTo(R * 0.1, R * 0.05); ctx.stroke();
+    ctx.beginPath(); ctx.arc(-R * 0.17, R * 0.16, R * 0.08, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(R * 0.17, R * 0.16, R * 0.08, 0, Math.PI * 2); ctx.fill();
+    ctx.lineWidth = R * 0.07;
+    ctx.beginPath(); ctx.moveTo(-R * 0.2, R * 0.42); ctx.lineTo(-R * 0.1, R * 0.34); ctx.lineTo(0, R * 0.42); ctx.lineTo(R * 0.1, R * 0.34); ctx.lineTo(R * 0.2, R * 0.42); ctx.stroke();
+  }
+
+  function render() {
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+
+    // 背景のきらきら
+    for (var i = 0; i < ambient.length; i++) {
+      var s = ambient[i];
+      var al = reduceMotion ? 0.45 : 0.25 + 0.5 * (0.5 + 0.5 * Math.sin(clock * s.sp + s.ph));
+      ctx.fillStyle = "rgba(255,255,255," + al.toFixed(3) + ")";
+      ctx.beginPath(); ctx.arc(s.x * W, s.y * H, s.s, 0, Math.PI * 2); ctx.fill();
+    }
+
+    ctx.save();
+    if (shake > 0 && !reduceMotion) {
+      var k = shake / 0.3 * 10;
+      ctx.translate((Math.random() - 0.5) * k, (Math.random() - 0.5) * k);
+    }
+    for (i = 0; i < targets.length; i++) {
+      var t = targets[i], sc = 1, alpha = 1;
+      if (!reduceMotion) {
+        sc = t.age < 0.28 ? easeOutBack(t.age / 0.28) : 1;
+        if (!t.leaving && t.life - t.age < 0.45) sc *= 1 + Math.sin(t.age * 38) * 0.05; // もうすぐ消える合図
+      } else if (t.age < 0.15) alpha = t.age / 0.15;
+      if (t.leaving) { var q = Math.max(0, 1 - t.leaveAge / 0.22); if (!reduceMotion) sc *= q; alpha *= q; }
+      var R = t.r * sc;
+      if (R < 0.5 || alpha <= 0) continue;
+      ctx.save();
+      ctx.globalAlpha = Math.min(1, alpha);
+      ctx.translate(t.x, t.y); ctx.rotate(t.rot);
+      if (t.type === "cloud") drawCloud(t, R); else drawStar(t, R);
+      ctx.restore();
+    }
+    ctx.restore();
+
+    for (i = 0; i < rings.length; i++) {
+      var rg = rings[i], kk = rg.age / rg.life;
+      ctx.strokeStyle = "rgba(" + rg.color + "," + (1 - kk).toFixed(3) + ")";
+      ctx.lineWidth = rg.w * (1 - kk) + 1;
+      ctx.beginPath(); ctx.arc(rg.x, rg.y, 6 + rg.maxR * (1 - Math.pow(1 - kk, 2)), 0, Math.PI * 2); ctx.stroke();
+    }
+    for (i = 0; i < particles.length; i++) {
+      var p = particles[i], pa = 1 - p.age / p.life;
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, Math.min(1, pa * 1.5));
+      ctx.translate(p.x, p.y); ctx.rotate(p.rot);
+      ctx.fillStyle = p.color;
+      traceStar(0, 0, p.size, p.size * 0.45); ctx.fill();
+      ctx.restore();
+    }
+    for (i = 0; i < floaters.length; i++) {
+      var f = floaters[i], fk = f.age / f.life;
+      var fy = f.y - (f.big ? 20 : 46) * (1 - Math.pow(1 - fk, 2));
+      var fs = f.size * (f.big && !reduceMotion ? (fk < 0.2 ? 0.6 + 2 * fk : 1) : 1);
+      ctx.save();
+      ctx.globalAlpha = fk > 0.6 ? Math.max(0, 1 - (fk - 0.6) / 0.4) : 1;
+      ctx.font = "900 " + Math.round(fs) + 'px "Hiragino Maru Gothic ProN", "Hiragino Sans", "Meiryo", system-ui, sans-serif';
+      ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.lineJoin = "round"; ctx.lineWidth = Math.max(4, fs * 0.2); ctx.strokeStyle = "rgba(40,25,70,.75)";
+      ctx.strokeText(f.text, f.x, fy);
+      ctx.fillStyle = f.color; ctx.fillText(f.text, f.x, fy);
+      ctx.restore();
+    }
+  }
+
+  var lastT = performance.now();
+  function frame(now) {
+    var dt = (now - lastT) / 1000; lastT = now;
+    if (!(dt > 0)) dt = 0;
+    if (dt > 0.1) dt = 0.1; // タブを離れた間などに、時間が一気に進まないように
+    update(dt);
+    render();
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+
+  /* ---------- スクロール・拡大・長押しメニューを防ぐ ---------- */
+  document.addEventListener("touchmove", function (e) {
+    if (!(e.target.closest && e.target.closest(".card"))) e.preventDefault();
+  }, { passive: false });
+  document.addEventListener("dblclick", function (e) { e.preventDefault(); }, { passive: false });
+  document.addEventListener("gesturestart", function (e) { e.preventDefault(); }, { passive: false });
+  document.addEventListener("contextmenu", function (e) { e.preventDefault(); });
+})();
+</script>
+</body>
+</html>
