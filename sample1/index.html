@@ -34,6 +34,7 @@ const CONFIG = {
     bgBottom: "#7a5cc7",    // 背景グラデーションの下の色
     finalTop: "#5a1e4a",    // 残りわずかのときの背景（上）
     finalBottom: "#ff7a59", // 残りわずかのときの背景（下）
+    finalOutline: "#ffffff", // 残りわずかのとき、星を見やすくする「ふち」の色（"" にすると、ふちなし）
     gold: "#ffc400",        // 金の星の色
     stars: ["#ff9fcb", "#7ee0c3", "#8ecbff", "#c9a7ff"], // ふつうの星の色（この中からランダム）
     // カード（スタート画面・結果画面の白い板）の色。カードを濃くしたら、ink・inkSoft・minus を明るくして、文字が読めるようにする
@@ -78,7 +79,10 @@ const CONFIG = {
     finalSpeed: 55,       // 動く速さの最大（1秒に何ピクセル・ラストスパート中）
     maxOnScreen: 6,      // 同時に出ている数の上限
     goldRate: 0.1,        // 金の星が出る割合（0.1 = 10%）
-    cloudRate: 0.2        // 黒い雲が出る割合（0.2 = 20%）
+    cloudRate: 0.2,       // 黒い雲が出る割合（0.2 = 20%）
+    // パソコン（マウス）で遊ぶときの手加減。指でタップするスマホより狙いにくいため、少しやさしくする
+    // lifeScale：画面にいる時間を何倍にするか、sizeScale：星の大きさを何倍にするか、speedScale：動く速さを何倍にするか。全部 1 にすると手加減なし
+    mouse: { lifeScale: 1.3, sizeScale: 1.15, speedScale: 0.8 }
   },
 
   // ---- 景品ランク（min 点以上でそのランク。上から順に高いランクを書く） ----
@@ -984,13 +988,22 @@ if (typeof module !== "undefined" && module.exports) { module.exports = GameLogi
     var left = Math.max(8, (W - maxW) / 2), right = Math.min(W - 8, left + maxW);
     return { left: left, right: right, top: hudBottom + 8, bottom: H - 34 };
   }
+  // マウスで遊んでいるか（最初は端末の種類で決め、実際に押した道具で更新する）
+  var usingMouse = false;
+  try { usingMouse = window.matchMedia("(hover: hover) and (pointer: fine)").matches; } catch (e) {}
+  function mouseAssist() {
+    var m = (C.spawn && C.spawn.mouse) || {};
+    var pick = function (v) { return typeof v === "number" && isFinite(v) && v > 0 ? Math.min(v, 3) : 1; };
+    return usingMouse ? { life: pick(m.lifeScale), size: pick(m.sizeScale), speed: pick(m.speedScale) } : { life: 1, size: 1, speed: 1 };
+  }
   function spawnTarget() {
     var alive = 0;
     for (var i = 0; i < targets.length; i++) if (!targets[i].leaving) alive++;
     if (alive >= C.spawn.maxOnScreen) return;
     var type = L.pickType(Math.random(), C.spawn);
     var base = Math.max(30, Math.min(54, Math.min(W, H) * 0.09));
-    var r = base * (type === "gold" ? 0.9 : type === "cloud" ? 1.1 : 1) * (0.92 + Math.random() * 0.16);
+    var ma = mouseAssist();
+    var r = base * ma.size * (type === "gold" ? 0.9 : type === "cloud" ? 1.1 : 1) * (0.92 + Math.random() * 0.16);
     var a = playArea(), x = 0, y = 0;
     for (var tries = 0; tries < 14; tries++) {
       x = a.left + r + Math.random() * Math.max(1, a.right - a.left - 2 * r);
@@ -1003,10 +1016,10 @@ if (typeof module !== "undefined" && module.exports) { module.exports = GameLogi
       if (ok) break;
     }
     var speedCfg = isFinal ? C.spawn.finalSpeed : C.spawn.speed;
-    var speed = typeof speedCfg === "number" && isFinite(speedCfg) ? Math.max(0, speedCfg) : (isFinal ? 40 : 18);
+    var speed = (typeof speedCfg === "number" && isFinite(speedCfg) ? Math.max(0, speedCfg) : (isFinal ? 40 : 18)) * ma.speed;
     targets.push({
       type: type, x: x, y: y, r: r, age: 0,
-      life: (isFinal ? C.spawn.finalLife : C.spawn.life) * (type === "cloud" ? 1.25 : type === "gold" ? 0.85 : 1),
+      life: (isFinal ? C.spawn.finalLife : C.spawn.life) * ma.life * (type === "cloud" ? 1.25 : type === "gold" ? 0.85 : 1),
       vx: (Math.random() - 0.5) * 2 * speed, vy: (Math.random() - 0.5) * 2 * speed,
       rot: 0, seed: Math.random() * 6.3,
       color: C.colors.stars[Math.floor(Math.random() * C.colors.stars.length)] || "#ff9fcb",
@@ -1016,6 +1029,7 @@ if (typeof module !== "undefined" && module.exports) { module.exports = GameLogi
 
   /* ---------- タップ ---------- */
   cv.addEventListener("pointerdown", function (e) {
+    if (e.pointerType) usingMouse = (e.pointerType === "mouse");
     if (phase !== "play") return;
     e.preventDefault();
     var x = e.clientX, y = e.clientY;
@@ -1183,6 +1197,14 @@ if (typeof module !== "undefined" && module.exports) { module.exports = GameLogi
       ctx.fillStyle = halo; ctx.beginPath(); ctx.arc(0, 0, R * 1.8, 0, Math.PI * 2); ctx.fill();
     } else {
       ctx.fillStyle = "rgba(255,255,255,.12)"; ctx.beginPath(); ctx.arc(0, 0, R * 1.25, 0, Math.PI * 2); ctx.fill();
+    }
+    // ラストスパート中は背景が明るいオレンジになるので、暗い影と白いふちで星を浮き立たせる
+    var outline = C.colors.finalOutline === undefined ? "#ffffff" : C.colors.finalOutline;
+    if (isFinal && outline) {
+      traceStar(0, R * 0.06, R, R * 0.5);
+      ctx.lineJoin = "round";
+      ctx.lineWidth = R * 0.62; ctx.strokeStyle = "rgba(40,10,45,.45)"; ctx.stroke();
+      ctx.lineWidth = R * 0.42; ctx.strokeStyle = outline; ctx.stroke();
     }
     var fill;
     if (isGold) {
