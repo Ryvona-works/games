@@ -1,837 +1,239 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ja">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#777777">
-<title>ミニゲーム</title>
-
-<script id="quiz-config">
-/* =====================================================================
-   設定（ここを書き換えるだけで、別のお店の診断にできます）
-
-   この見本を別のお店に使うときに変える所：
-     1. shopName、quizName、lead、startLabel（店名・診断の名前・説明）
-     2. colors（色。背景を濃くするときは、下の色の説明の注意を読む）
-     3. art（絵。お茶・飲み物の店でなければ "sparkle" か "none"）
-     4. results と questions（結果と質問。点の付け方の key をそろえる）
-     5. resultLabel、shopNote、texts の brewing（「一杯をブレンド」など業種に合わない文）
-     6. shareText（シェアの文）と shareUrl
-     7. sampleNote を ""（空）にする。credit はお店の希望に合わせる
-     ※ ファイルの冒頭の <title> と theme-color も、お店の名前と色にしておく
-   ===================================================================== */
-const CONFIG = {
-  // ---- お店・診断の名前 ----
-  shopName: "ハーブティーの店 そよぎ",   // 店名（タイトル画面と結果画面に表示）
-  quizName: "今日の一杯診断",             // 診断の名前（タイトルとして大きく表示）
-  lead: "6つの質問に答えると、今のあなたにぴったりのハーブティーをお選びします。", // タイトル画面の説明
-  startLabel: "診断をはじめる",           // スタートボタンの文字
-
-  // ---- 色（"#rrggbb" の形で書きます） ----
-  // 背景（bg）を濃くしたら、文字（ink）を明るく、選択肢の地（paper）を濃くして、文字が読めるようにする
-  // そのときは main・accent と、結果ごとの color（results の color）も、背景や paper との差が十分か確かめる（文字の色として使う所があるため）
-  colors: {
-    bg: "#e6ede3",      // 背景の色
-    paper: "#f7f8f2",   // 選択肢やカードの色
-    ink: "#1f3a33",     // 文字の色
-    main: "#2f5d50",    // メインの色（ボタン、進み具合のバー）
-    accent: "#c99a3b",  // アクセントの色（問題番号、飾りの線）
-    onMain: "#ffffff",  // メインの色の上の文字（ボタン、選んだ選択肢）の色
-    share: "#111111",   // シェアのボタンの色
-    shareInk: "#ffffff" // シェアのボタンの上の文字の色（share を明るくしたら濃い色にする）
-  },
-
-  // ---- 絵 ----
-  // "cup"（カップと葉。お茶・飲み物の店向け）、"sparkle"（きらめき。どの業種でも使える）、"none"（絵なし）のどれか。
-  // タイトル画面、結果を待つ間、結果画面の絵が変わります。ほかの値のときは、絵なしになります
-  art: "cup",
-
-  // ---- 結果（4種類程度。上に書いた物ほど、同点のときに優先されます） ----
-  // key：点の付け方で使う名前（半角英字）。name：商品名。copy：ひとことの見出し。
-  // text：商品の説明。reason：おすすめの理由。color：結果の色。liquid：カップの中の色。
-  // mark：カップの横の絵（"moon" 月、"leaf" 葉、"sun" 太陽、"flower" 花 から選ぶ）
-  results: [
-    { key: "relax",  name: "カモミール＆ラベンダー", copy: "夜のくつろぎブレンド",
-      text: "りんごのような甘い香りのカモミールに、ラベンダーをひとさじ。やわらかい味わいです。",
-      reason: "ゆっくり過ごしたい、という答えが多かったあなたに。一日の終わりにどうぞ。",
-      color: "#6f64a8", liquid: "#e6c766", mark: "moon" },
-    { key: "fresh",  name: "ペパーミント＆レモングラス", copy: "すっきりブレンド",
-      text: "スーッとしたミントと、レモンのような香りのレモングラス。冷やしてもおいしい一杯です。",
-      reason: "気分を切り替えたい、という答えが多かったあなたに。朝や仕事の合間にどうぞ。",
-      color: "#2f8a6e", liquid: "#b9d58a", mark: "leaf" },
-    { key: "bright", name: "ローズヒップ＆ハイビスカス", copy: "わくわくブレンド",
-      text: "ルビー色に広がる、甘酸っぱい味わい。はちみつを足すと、また違ったおいしさに。",
-      reason: "楽しいことを探している、という答えが多かったあなたに。午後のおともにどうぞ。",
-      color: "#b8434f", liquid: "#c8404e", mark: "sun" },
-    { key: "warm",   name: "ルイボス＆シナモン", copy: "ぬくもりブレンド",
-      text: "まろやかなルイボスに、シナモンの甘い香り。ミルクを入れてもよく合います。",
-      reason: "ほっとひと息つきたい、という答えが多かったあなたに。寒い日の午後にどうぞ。",
-      color: "#9a5b2e", liquid: "#b8642e", mark: "flower" }
-  ],
-
-  // ---- 質問（5〜6問。選択肢は2〜4個） ----
-  // points：その選択肢を選んだとき、どの結果に何点足すか（結果の key: 点）。
-  // 一番点の高い結果が出ます。同点なら results の上に書いた方が出ます。
-  questions: [
-    { q: "ハーブティーを飲みたいのは、どんなとき？",
-      choices: [
-        { label: "朝の一杯に",                 points: { fresh: 2, bright: 1 } },
-        { label: "お昼のひと休みに",           points: { bright: 2, fresh: 1 } },
-        { label: "夜、くつろぎたいときに",     points: { relax: 3 } },
-        { label: "寒い日の午後に",             points: { warm: 3 } }
-      ] },
-    { q: "好きな味や香りは？",
-      choices: [
-        { label: "はちみつのような甘い香り",   points: { warm: 2, relax: 1 } },
-        { label: "スーッとさわやか",           points: { fresh: 3 } },
-        { label: "フルーツのように甘酸っぱい", points: { bright: 3 } },
-        { label: "やさしく、おだやか",         points: { relax: 2, warm: 1 } }
-      ] },
-    { q: "今の気分にいちばん近いのは？",
-      choices: [
-        { label: "のんびりしたい",             points: { relax: 2, warm: 1 } },
-        { label: "すっきりした気分",           points: { fresh: 2, bright: 1 } },
-        { label: "わくわくしたい",             points: { bright: 2, fresh: 1 } }
-      ] },
-    { q: "飲むなら、温かい？ 冷たい？",
-      choices: [
-        { label: "温かいのがいい",             points: { warm: 2, relax: 1 } },
-        { label: "冷たいのがいい",             points: { fresh: 2, bright: 1 } }
-      ] },
-    { q: "惹かれる色はどれ？",
-      choices: [
-        { label: "ラベンダー色",               points: { relax: 2 } },
-        { label: "ミント色",                   points: { fresh: 2 } },
-        { label: "ルビー色",                   points: { bright: 2 } },
-        { label: "キャラメル色",               points: { warm: 2 } }
-      ] },
-    { q: "一緒に食べたいのは？",
-      choices: [
-        { label: "クッキーやスコーン",         points: { warm: 2 } },
-        { label: "フルーツやタルト",           points: { bright: 2 } },
-        { label: "お茶だけで十分",             points: { relax: 1, fresh: 1 } }
-      ] }
-  ],
-
-  // ---- 結果画面の文 ----
-  resultLabel: "あなたにおすすめの一杯は",          // 商品名の上に出す文
-  // ※ 特典を景品にする場合は、景品表示法の上限をお店で確認してください。
-  shopNote: "この画面を店頭で見せると、試飲できます", // お店向けの一文（"" にすると出ません）
-  againLabel: "もう一度診断する",
-
-  // ---- 見本の表示 ----
-  // タイトル画面と結果画面に出す注意書き。実際のお店で使うときは "" にすると消えます。
-  sampleNote: "※ 架空のお店の見本です",
-
-  // ---- 画面のそのほかの文 ----
-  texts: {
-    questionUnit: "問",          // タイトル画面「6問」の「問」（数は質問の数から自動で入ります）
-    timeNum: "1",                // タイトル画面「1分ほど」の数（"" にすると、この目安を出しません）
-    timeUnit: "分ほど",          // タイトル画面「1分ほど」の「分ほど」
-    back: "もどる",              // 質問画面の、前に戻るボタン
-    questionMark: "Q",           // 質問番号の前に付ける文字（Q1、Q2 …）
-    brewing: "あなたの一杯を\nブレンドしています", // 結果が出るまでの文（\n で改行）
-    brewingDots: "・・・"        // その下の飾り
-  },
-
-  // ---- X（旧 Twitter）でシェア ----
-  // {quiz} 診断の名前、{shop} 店名、{name} 商品名、{copy} 見出し に置きかわります。
-  // 全角120字（半角は0.5字、URL は11.5字、絵文字は1つで1字として数えます）を超えると、末尾を「…」で切ります。
-  shareText: "{shop}の「{quiz}」をやってみたら、わたしは「{copy}（{name}）」でした！",
-  shareUrl: "",           // シェアに付けるページのURL（"" なら付けません）
-  shareLabel: "結果をシェア",
-
-  // ---- その他 ----
-  resultDelay: 1.8,       // 結果が出るまでの演出の長さ（秒）
-  credit: "Sample by Ryvona"  // 画面の隅に出す小さな文字
-};
-</script>
-
-<script id="quiz-logic">
-/* =====================================================================
-   診断の計算（画面に依存しない小さな関数。node でも試せます）
-   足りない入力や形の違う入力でも、例外を出さずに動きます。
-   ===================================================================== */
-const QuizLogic = (function () {
-  function isArr(x) { return Array.isArray(x); }
-  function isObj(x) { return x !== null && typeof x === "object" && !Array.isArray(x); }
-  function has(o, k) { return Object.prototype.hasOwnProperty.call(o, k); }
-  function validResults(results) {
-    return isArr(results) ? results.filter(function (r) { return isObj(r) && typeof r.key === "string" && r.key !== ""; }) : [];
-  }
-
-  // 答え（各質問で選んだ選択肢の番号の配列。未回答は null）から、結果ごとの点を出す
-  function scoreAnswers(answers, questions, results) {
-    var scores = {};
-    var rs = validResults(results);
-    var as = isArr(answers) ? answers : [];
-    var qs = isArr(questions) ? questions : [];
-    for (var r = 0; r < rs.length; r++) {
-      if (!has(scores, rs[r].key)) Object.defineProperty(scores, rs[r].key, { value: 0, writable: true, enumerable: true, configurable: true });
-    }
-    for (var i = 0; i < qs.length; i++) {
-      var idx = as[i];
-      if (idx === null || idx === undefined) continue;
-      if (!isObj(qs[i]) || !isArr(qs[i].choices)) continue;
-      var choice = qs[i].choices[idx];
-      if (!isObj(choice) || !isObj(choice.points)) continue;
-      for (var k in choice.points) {
-        if (has(choice.points, k) && has(scores, k) && typeof choice.points[k] === "number" && isFinite(choice.points[k])) {
-          scores[k] += choice.points[k];
-        }
-      }
-    }
-    return scores;
-  }
-
-  // 一番点の高い結果を返す。同点なら results の並び順で前にある方。結果が無ければ null
-  function pickResult(answers, questions, results) {
-    var rs = validResults(results);
-    if (!rs.length) return null;
-    var scores = scoreAnswers(answers, questions, rs);
-    var best = rs[0];
-    for (var r = 1; r < rs.length; r++) {
-      if (scores[rs[r].key] > scores[best.key]) best = rs[r];
-    }
-    return best;
-  }
-
-  // 設定を確かめる。間違いの説明（日本語の文）の配列を返す。空なら問題なし
-  function checkConfig(cfg) {
-    var errs = [];
-    if (!isObj(cfg)) return ["CONFIG がありません（または形が違います）。"];
-    var keys = Object.create(null);
-    if (!isArr(cfg.results) || !cfg.results.length) {
-      errs.push("results（結果）が1つもありません。少なくとも1つ書いてください。");
-    } else {
-      cfg.results.forEach(function (r, i) {
-        var at = "results の " + (i + 1) + " 番目";
-        if (!isObj(r)) { errs.push(at + "が { … } の形になっていません。"); return; }
-        if (typeof r.key !== "string" || r.key === "") errs.push(at + "に key（半角英字の名前）がありません。");
-        else if (has(keys, r.key)) errs.push(at + "の key「" + r.key + "」が、ほかの結果と同じです。");
-        else keys[r.key] = true;
-        if (typeof r.name !== "string" || r.name === "") errs.push(at + "に name（商品名）がありません。");
-      });
-    }
-    var anyKey = Object.keys(keys).length > 0; // 結果が1つも無いときは、key の違いまでは調べない
-    if (!isArr(cfg.questions) || !cfg.questions.length) {
-      errs.push("questions（質問）が1つもありません。少なくとも1つ書いてください。");
-    } else {
-      cfg.questions.forEach(function (q, i) {
-        var at = "質問 " + (i + 1) + " ";
-        if (!isObj(q)) { errs.push(at + "が { … } の形になっていません。"); return; }
-        if (typeof q.q !== "string" || q.q === "") errs.push(at + "に q（質問の文）がありません。");
-        if (!isArr(q.choices) || !q.choices.length) { errs.push(at + "に choices（選択肢）がありません。"); return; }
-        q.choices.forEach(function (c, j) {
-          var cat = at + "の選択肢 " + (j + 1) + " ";
-          if (!isObj(c)) { errs.push(cat + "が { … } の形になっていません。"); return; }
-          if (typeof c.label !== "string" || c.label === "") errs.push(cat + "に label（選択肢の文）がありません。");
-          if (c.points === undefined) return;
-          if (!isObj(c.points)) { errs.push(cat + "の points が { key: 点 } の形になっていません。"); return; }
-          for (var k in c.points) {
-            if (!has(c.points, k)) continue;
-            if (anyKey && !has(keys, k)) errs.push(cat + "の points に、results にない key「" + k + "」があります。");
-            if (typeof c.points[k] !== "number" || !isFinite(c.points[k])) errs.push(cat + "の points の「" + k + "」が数ではありません。");
-          }
-        });
-      });
-    }
-    if (cfg.texts !== undefined && !isObj(cfg.texts)) errs.push("texts が { … } の形になっていません。");
-    if (cfg.colors !== undefined && !isObj(cfg.colors)) errs.push("colors が { … } の形になっていません。");
-    return errs;
-  }
-
-  // 文字を書記素（見た目の1文字。絵文字の並びも1つ）ごとに分ける。
-  // Intl.Segmenter が無い環境では、コードポイントごとに分ける（長めに数えるので安全側）
-  var segmenter = null, emojiRe = null;
-  try { if (typeof Intl !== "undefined" && Intl.Segmenter) segmenter = new Intl.Segmenter("ja", { granularity: "grapheme" }); } catch (e) { segmenter = null; }
-  try { emojiRe = new RegExp("\\p{Extended_Pictographic}|[\\u{1F1E6}-\\u{1F1FF}]|\\u20E3", "u"); } catch (e) { emojiRe = null; }
-  function graphemes(text) {
-    if (segmenter && emojiRe) {
-      var out = [];
-      var it = segmenter.segment(text)[Symbol.iterator](), s;
-      while (!(s = it.next()).done) out.push(s.value.segment);
-      return out;
-    }
-    return Array.from(text);
-  }
-  function charWeight(ch) {
-    var c = ch.codePointAt(0);
-    return (c <= 0x10FF || (c >= 0x2000 && c <= 0x200D) || (c >= 0x2010 && c <= 0x201F) || (c >= 0x2032 && c <= 0x2037)) ? 0.5 : 1;
-  }
-  function graphemeWeight(g) {
-    if (emojiRe && segmenter && emojiRe.test(g)) return 1; // 絵文字の並びは、まとめて全角1字
-    var n = 0;
-    for (var ch of g) n += charWeight(ch);
-    return n;
-  }
-
-  // X の数え方に近い長さ（全角1字＝1、半角＝0.5、URL＝11.5、絵文字＝1）
-  function shareLength(text) {
-    var n = 0;
-    var s = text === null || text === undefined ? "" : String(text);
-    if (s.normalize) s = s.normalize("NFC");
-    var rest = s.replace(/https?:\/\/\S+/g, function () { n += 11.5; return ""; });
-    var gs = graphemes(rest);
-    for (var i = 0; i < gs.length; i++) n += graphemeWeight(gs[i]);
-    return n;
-  }
-
-  // シェア文を作る（全角 max 字を超えたら、末尾を「…」で切る。URL は必ず残す）
-  function buildShareText(cfg, result, max) {
-    cfg = isObj(cfg) ? cfg : {};
-    result = isObj(result) ? result : null;
-    max = max || 120;
-    // 置きかえる文に「$&」などが入っていても、そのまま入るように関数で渡す
-    function val(v) { return function () { return v === null || v === undefined ? "" : String(v); }; }
-    var text = String(cfg.shareText || "")
-      .replace(/\{quiz\}/g, val(cfg.quizName))
-      .replace(/\{shop\}/g, val(cfg.shopName))
-      .replace(/\{name\}/g, val(result ? result.name : ""))
-      .replace(/\{copy\}/g, val(result ? result.copy : ""));
-    if (text.normalize) text = text.normalize("NFC");
-    var url = cfg.shareUrl ? " " + cfg.shareUrl : "";
-    var room = max - shareLength(url);
-    if (shareLength(text) > room) {
-      var chars = graphemes(text);
-      while (chars.length && shareLength(chars.join("") + "…") > room) chars.pop();
-      text = chars.join("") + "…";
-    }
-    return text + url;
-  }
-
-  function shareHref(cfg, result) {
-    return "https://x.com/intent/post?text=" + encodeURIComponent(buildShareText(cfg, result));
-  }
-
-  return { scoreAnswers: scoreAnswers, pickResult: pickResult, checkConfig: checkConfig, shareLength: shareLength,
-           buildShareText: buildShareText, shareHref: shareHref };
-})();
-if (typeof module !== "undefined" && module.exports) { module.exports = QuizLogic; }
-</script>
-
+<title>Ryvona のミニゲーム見本</title>
+<meta name="description" content="スマホで遊べる、お店の販促用ミニゲームの見本です。店名と景品はすべて架空です。">
 <style>
   :root {
-    --bg: #e6ede3;
-    --paper: #f7f8f2;
-    --ink: #1f3a33;
-    --main: #2f5d50;
-    --accent: #c99a3b;
-    --res: #2f5d50;
-    --liquid: #b9d58a;
-    --on-main: #fff;
-    --share: #111;
-    --share-ink: #fff;
-    --sans: "Yu Gothic UI", "Yu Gothic", "YuGothic", "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Meiryo", system-ui, sans-serif;
-    --num: Georgia, "Times New Roman", serif;
+    --bg: #faf9f6;
+    --card: #ffffff;
+    --ink: #24242b;
+    --muted: #5d5d68;
+    --line: #e7e4dd;
+    --shadow: 0 1px 2px rgba(30, 28, 24, .05), 0 6px 20px rgba(30, 28, 24, .06);
   }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  html, body { height: 100%; overflow: hidden; overscroll-behavior: none; }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
   body {
-    position: fixed; inset: 0;
-    font-family: var(--sans);
+    margin: 0;
+    background: var(--bg);
     color: var(--ink);
-    background-color: var(--bg);
-    /* 細い斜めの線（ティーバッグの紙のような質感） */
-    background-image: repeating-linear-gradient(135deg, color-mix(in srgb, var(--ink) 3.5%, transparent) 0 1px, transparent 1px 9px);
-    -webkit-tap-highlight-color: transparent;
-    touch-action: manipulation;
+    font-family: system-ui, -apple-system, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Meiryo", sans-serif;
+    line-height: 1.6;
+    word-break: keep-all;
+    overflow-wrap: anywhere;
   }
-  button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
-  button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
-
-  /* ---------- 画面の共通の型 ---------- */
-  .screen {
-    position: fixed; inset: 0; z-index: 10;
-    display: flex; flex-direction: column;
-    padding: calc(env(safe-area-inset-top, 0px) + 22px) 22px calc(env(safe-area-inset-bottom, 0px) + 30px);
-    opacity: 0; visibility: hidden;
-    transition: opacity .3s ease, visibility 0s linear .3s;
+  .wrap {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 28px max(16px, env(safe-area-inset-right)) 24px max(16px, env(safe-area-inset-left));
   }
-  .screen.show { z-index: 11; opacity: 1; visibility: visible; transition: opacity .3s ease; }
-  /* 消えていく途中の画面は、すぐに押せなくする（下の画面のボタンを押し抜けないように） */
-  .screen:not(.show) { pointer-events: none; }
-  .col { width: 100%; max-width: 440px; margin: 0 auto; height: 100%; display: flex; flex-direction: column; min-height: 0; }
-  /* 文字を小さくしても収まらないとき（JS が付ける）：縦にスクロールして、下のボタンまで届くようにする */
-  .col.fit-scroll { overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
-  .col.fit-scroll > * { flex-shrink: 0; }
-  .col.fit-scroll .t-art { display: none; }
-  .col.fit-scroll .choices, .col.fit-scroll .r-body { flex: 0 0 auto; }
-  .sample-note { font-size: 12px; font-weight: 700; line-height: 1.5; letter-spacing: .06em; color: var(--ink); }
-
-  .btn {
-    display: flex; align-items: center; justify-content: space-between; gap: 12px;
-    width: 100%; min-height: 54px; padding: 0 20px;
-    background: var(--main); color: var(--on-main);
-    font-size: 16px; font-weight: 700; letter-spacing: .12em; text-align: left;
-    border-radius: 2px;
-    box-shadow: 4px 4px 0 var(--accent);
-    transition: transform .12s ease, box-shadow .12s ease;
+  header { margin: 0 0 22px; }
+  h1 {
+    margin: 0 0 6px;
+    font-size: clamp(22px, 6vw, 30px);
+    line-height: 1.3;
+    letter-spacing: .02em;
   }
-  .btn::after { content: "→"; font-family: var(--num); font-size: 20px; letter-spacing: 0; }
-  .btn:active { transform: translate(3px, 3px); box-shadow: 1px 1px 0 var(--accent); }
-  .btn:disabled { opacity: .6; cursor: default; }
-  .btn.ghost { background: transparent; color: var(--ink); box-shadow: none; border: 1.5px solid var(--ink); min-height: 46px; font-size: 14px; }
-  .btn.ghost::after { content: "↺"; font-family: var(--sans); }
-  .btn.x { background: var(--share); color: var(--share-ink); box-shadow: 4px 4px 0 var(--accent); }
-  .btn.x::after { content: "↗"; }
+  .lead { margin: 0; color: var(--muted); font-size: 15px; }
 
-  /* ---------- タイトル ---------- */
-  .t-shop { font-size: 12px; font-weight: 700; letter-spacing: .3em; display: flex; align-items: center; gap: 10px; word-break: keep-all; overflow-wrap: anywhere; }
-  .t-shop::before { content: ""; width: 28px; height: 1.5px; background: var(--accent); }
-  .t-art { flex: 1 1 auto; min-height: 0; display: flex; align-items: center; justify-content: flex-start; padding: 8px 0; }
-  .t-art svg { height: 100%; max-height: 230px; width: auto; max-width: 100%; }
-  .t-name { font-size: clamp(32px, 11vw, 44px); font-weight: 300; line-height: 1.15; letter-spacing: .06em; word-break: keep-all; overflow-wrap: anywhere; }
-  .t-name b { font-weight: 700; color: var(--main); }
-  .t-lead { margin: 14px 0 22px; font-size: 14px; line-height: 1.8; max-width: 22em; opacity: .85; word-break: keep-all; overflow-wrap: anywhere; }
-  .t-meta { display: flex; gap: 18px; margin-bottom: 18px; font-size: 12px; letter-spacing: .1em; opacity: .7; }
-  .t-meta span b { font-family: var(--num); font-size: 18px; font-weight: 400; margin-right: 3px; color: var(--accent); opacity: 1; }
-  .t-sample { margin-top: 12px; }
-  .fit1 .t-name { font-size: 28px; }
-  .fit1 .t-lead { margin: 8px 0 12px; font-size: 13px; line-height: 1.65; }
-  .fit1 .t-meta { margin-bottom: 12px; }
-  .fit1 .t-sample { margin-top: 8px; }
-  .fit2 .t-name { font-size: 24px; }
-  .fit2 .t-lead { margin: 6px 0 10px; line-height: 1.5; }
-  .fit2 .t-meta { margin-bottom: 8px; }
-  .fit2 .t-sample { margin-top: 6px; }
-
-  /* ---------- 質問 ---------- */
-  .q-top { display: flex; align-items: center; gap: 14px; }
-  .back { display: flex; align-items: center; gap: 4px; min-height: 40px; padding: 0 10px 0 0; font-size: 13px; letter-spacing: .1em; font-weight: 700; }
-  .back::before { content: "←"; font-family: var(--num); font-size: 18px; }
-  .bar { flex: 1; height: 3px; background: color-mix(in srgb, var(--ink) 14%, transparent); position: relative; overflow: hidden; }
-  .bar i { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: var(--main); transition: width .35s ease; }
-  .count { font-family: var(--num); font-size: 15px; white-space: nowrap; }
-  .count b { font-size: 22px; font-weight: 400; color: var(--main); }
-  .q-num { margin-top: clamp(12px, 4vh, 34px); font-family: var(--num); font-style: italic; font-size: clamp(40px, 13vw, 60px); line-height: 1; color: var(--accent); }
-  .q-text { margin: 10px 0 18px; font-size: clamp(19px, 5.8vw, 24px); font-weight: 700; line-height: 1.5; letter-spacing: .04em; overflow-wrap: anywhere; word-break: auto-phrase; text-wrap: balance; }
-  .choices { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 10px; justify-content: flex-start; }
-  .choice {
-    flex: 0 0 auto; min-height: 60px;
-    display: flex; align-items: center; gap: 14px;
-    padding: 8px 16px; text-align: left;
-    background: var(--paper); border: 1.5px solid color-mix(in srgb, var(--ink) 20%, transparent); border-radius: 2px;
-    font-size: 16px; font-weight: 700; line-height: 1.4; letter-spacing: .03em;
-    transition: background .15s ease, border-color .15s ease, transform .15s ease;
+  .cards {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 16px;
+    grid-template-columns: 1fr;
   }
-  .choice .k { flex: none; width: 26px; height: 26px; display: grid; place-items: center; border: 1.5px solid var(--main); border-radius: 50%; font-family: var(--num); font-size: 14px; font-weight: 400; color: var(--main); }
-  .choice .l { overflow-wrap: anywhere; }
-  .choice:active { transform: translateX(3px); }
-  .choice.on { background: var(--main); border-color: var(--main); color: var(--on-main); }
-  .choice.on .k { background: var(--accent); border-color: var(--accent); color: var(--on-main); }
-  /* 文が長くて収まらないとき（JS が付ける） */
-  .fit1 .q-num { font-size: 34px; margin-top: 8px; }
-  .fit1 .q-text { font-size: 17px; margin: 6px 0 12px; }
-  .fit1 .choice { font-size: 14px; padding: 6px 12px; min-height: 46px; }
-  .fit1 .choices { gap: 7px; }
-  .fit2 .q-num { display: none; }
-  .fit2 .q-text { font-size: 15px; line-height: 1.45; }
-  .fit2 .choice { font-size: 13px; line-height: 1.3; min-height: 36px; }
-
-  /* ---------- 結果の演出 ---------- */
-  #brewScreen { align-items: center; justify-content: center; text-align: center; }
-  .brew-cup { width: 150px; height: 150px; }
-  .brew-cup .fill { transform-origin: 50% 100%; transform: scaleY(0); }
-  .brewing .brew-cup .fill { animation: fillUp var(--brew, 1.8s) cubic-bezier(.4,.1,.3,1) forwards; }
-  .brew-cup .steam path { opacity: 0; }
-  .brewing .brew-cup .steam path { animation: steam 1.2s ease-in-out infinite; }
-  .brewing .brew-cup .steam path:nth-child(2) { animation-delay: .4s; }
-  .brewing .brew-cup .steam path:nth-child(3) { animation-delay: .8s; }
-  /* きらめきの絵（art: "sparkle"）：結果を待つ間に、真ん中から大きくなる */
-  .brew-cup .spark { transform-box: fill-box; transform-origin: center; transform: scale(0); }
-  .brewing .brew-cup .spark { animation: sparkIn var(--brew, 1.8s) cubic-bezier(.3,1.4,.5,1) forwards; }
-  @keyframes sparkIn { from { transform: scale(0) rotate(-45deg); } to { transform: scale(1) rotate(0); } }
-  .brew-msg { margin-top: 18px; font-size: 15px; font-weight: 700; letter-spacing: .2em; white-space: pre-line; }
-  .brew-dots { display: block; margin-top: 8px; font-family: var(--num); color: var(--accent); letter-spacing: .4em; }
-  @keyframes fillUp { from { transform: scaleY(0); } to { transform: scaleY(1); } }
-  @keyframes steam { 0% { opacity: 0; transform: translateY(6px); } 40% { opacity: .8; } 100% { opacity: 0; transform: translateY(-10px); } }
-
-  /* ---------- 結果 ---------- */
-  .r-label { font-size: 12px; font-weight: 700; letter-spacing: .24em; display: flex; align-items: center; gap: 10px; }
-  .r-label::before { content: ""; width: 28px; height: 1.5px; background: var(--res); }
-  .r-head { display: flex; align-items: center; gap: 12px; margin-top: 8px; }
-  .r-art { flex: none; width: clamp(76px, 15vh, 112px); height: clamp(76px, 15vh, 112px); }
-  .r-copy { font-size: 13px; font-weight: 700; letter-spacing: .16em; color: var(--res); }
-  .r-name { font-size: clamp(21px, 6.4vw, 27px); font-weight: 700; line-height: 1.3; letter-spacing: .02em; color: var(--ink); word-break: keep-all; overflow-wrap: anywhere; }
-  .r-body { flex: 1 1 auto; min-height: 0; margin-top: 10px; display: flex; flex-direction: column; gap: 8px; }
-  .r-text { font-size: 14px; line-height: 1.7; }
-  .r-reason { font-size: 13px; line-height: 1.65; padding-left: 12px; border-left: 3px solid var(--res); opacity: .9; }
-  .r-note { margin-top: 2px; padding: 9px 12px; background: var(--paper); border: 1.5px dashed var(--res); font-size: 13px; font-weight: 700; line-height: 1.5; color: var(--res); }
-  .r-sample { margin-top: 2px; }
-  .r-btns { display: flex; flex-direction: column; gap: 12px; margin-top: 12px; }
-  .fit1 .r-art { width: 64px; height: 64px; }
-  .fit1 .r-text { font-size: 13px; line-height: 1.6; }
-  .fit1 .r-reason { font-size: 12px; line-height: 1.55; }
-  .fit1 .r-btns { gap: 9px; }
-  .fit1 .btn { min-height: 46px; }
-  .fit1 .btn.ghost { min-height: 40px; }
-  .fit2 .r-reason { display: none; }
-  .fit2 .r-art { width: 52px; height: 52px; }
-
-  .pop { animation: pop .5s ease both; }
-  @keyframes pop { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
-
-  /* ---------- 設定の間違いを知らせる画面 ---------- */
-  #errorScreen .col { overflow-y: auto; }
-  .e-title { font-size: 18px; font-weight: 700; line-height: 1.5; color: #a1302f; }
-  .e-lead { margin: 8px 0 12px; font-size: 13px; line-height: 1.7; }
-  .e-list { padding-left: 1.4em; font-size: 13px; line-height: 1.7; }
-  .e-list li { margin-bottom: 4px; overflow-wrap: anywhere; }
-
-  #credit {
-    position: fixed; right: 10px; bottom: calc(env(safe-area-inset-bottom, 0px) + 6px); z-index: 50;
-    font-size: 10px; letter-spacing: .08em; opacity: .5; pointer-events: none;
+  .card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: var(--shadow);
+    display: flex;
+    flex-direction: column;
   }
-
-  @media (max-height: 600px) {
-    .screen { padding-top: calc(env(safe-area-inset-top, 0px) + 16px); padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 24px); }
-    .t-lead { margin: 10px 0 16px; }
+  .band { display: block; height: 92px; }
+  .band svg { display: block; width: 100%; height: 100%; }
+  .body { padding: 14px 18px 18px; display: flex; flex-direction: column; flex: 1; }
+  .shop { margin: 0; font-size: 13px; color: var(--muted); }
+  h2 { margin: 2px 0 10px; font-size: 20px; line-height: 1.35; }
+  dl { margin: 0 0 16px; font-size: 14px; }
+  dt {
+    display: inline-block;
+    font-size: 12px;
+    font-weight: 700;
+    padding: 1px 8px;
+    border-radius: 999px;
+    background: var(--tint);
+    color: var(--accent);
   }
+  dd { margin: 4px 0 10px; }
+  dd:last-child { margin-bottom: 0; }
+  .play {
+    margin-top: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 48px;
+    padding: 10px 16px;
+    border-radius: 12px;
+    background: var(--accent);
+    color: #fff;
+    font-weight: 700;
+    font-size: 16px;
+    text-decoration: none;
+  }
+  .play:hover { filter: brightness(1.08); }
+  .play:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
 
-  /* 動きを減らす設定のとき：演出を控えめに */
-  @media (prefers-reduced-motion: reduce) {
-    *, *::before, *::after { animation: none !important; transition: none !important; }
-    .brewing .brew-cup .fill { transform: scaleY(1); }
-    .brewing .brew-cup .spark { transform: none; }
-    .brewing .brew-cup .steam path { opacity: .6; }
+  .c1 { --accent: #5a4bc2; --tint: #ecebfb; }
+  .c2 { --accent: #b9502b; --tint: #f8ece2; }
+  .c3 { --accent: #2f5d50; --tint: #e6ede3; }
+
+  footer {
+    margin-top: 24px;
+    padding-top: 14px;
+    border-top: 1px solid var(--line);
+    font-size: 12px;
+    color: var(--muted);
+  }
+  footer p { margin: 0 0 2px; }
+
+  /* 横向きのスマホ・タブレット・PC：3列（2列だと1枚だけ余るので使わない） */
+  @media (min-width: 760px) {
+    .cards { grid-template-columns: repeat(3, 1fr); }
+    .body { padding: 12px 14px 16px; }
+  }
+  @media (min-width: 900px) {
+    .wrap { padding-top: 48px; }
+    header { margin-bottom: 28px; }
+    .cards { gap: 20px; }
+    .body { padding: 14px 18px 18px; }
+  }
+  /* 背の低い画面（横向き）：飾りを薄く */
+  @media (max-height: 420px) {
+    .wrap { padding-top: 16px; }
+    header { margin-bottom: 14px; }
+    .band { height: 64px; }
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .play { transition: filter .15s; }
   }
 </style>
 </head>
 <body>
-  <section id="titleScreen" class="screen show" aria-label="タイトル画面">
-    <div class="col" id="titleCol">
-      <p class="t-shop" id="tShop"></p>
-      <div class="t-art" aria-hidden="true">
-        <svg viewBox="0 0 240 230">
-          <g data-art="cup">
-            <circle cx="120" cy="112" r="96" fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-dasharray="2 7"/>
-            <path d="M150 52 C 190 40, 214 70, 206 104 C 176 104, 152 84, 150 52 Z" fill="var(--main)"/>
-            <path d="M152 54 C 170 70, 186 86, 204 102" stroke="var(--bg)" stroke-width="1.5" fill="none"/>
-            <path d="M44 86 C 30 60, 52 36, 78 44 C 80 70, 66 86, 44 86 Z" fill="var(--accent)" opacity=".85"/>
-            <g transform="translate(58 92)">
-              <path d="M0 18 H 104 L 96 78 C 94 96, 80 104, 64 104 H 40 C 24 104, 10 96, 8 78 Z" fill="var(--paper)" stroke="var(--ink)" stroke-width="2.5"/>
-              <path d="M4 30 H 100 L 96 62 H 8 Z" fill="var(--main)" opacity=".18"/>
-              <path d="M102 36 C 128 34, 130 70, 98 72" fill="none" stroke="var(--ink)" stroke-width="2.5"/>
-              <ellipse cx="52" cy="116" rx="72" ry="8" fill="none" stroke="var(--ink)" stroke-width="2"/>
-              <path d="M34 0 c -8 -10 8 -14 0 -26 M54 4 c -8 -12 8 -16 0 -30 M74 0 c -8 -10 8 -14 0 -26" fill="none" stroke="var(--ink)" stroke-width="2" stroke-linecap="round" opacity=".5"/>
-            </g>
+<div class="wrap">
+  <header>
+    <h1>Ryvona のミニゲーム見本</h1>
+    <p class="lead">スマホで遊べる、お店の販促用ミニゲームの見本です。店名と景品はすべて架空です。</p>
+  </header>
+
+  <ul class="cards">
+    <li class="card c1">
+      <span class="band" aria-hidden="true">
+        <svg viewBox="0 0 400 92" preserveAspectRatio="xMidYMid slice">
+          <defs>
+            <linearGradient id="g1" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#2b2a6b"/>
+              <stop offset="1" stop-color="#7a5cc7"/>
+            </linearGradient>
+          </defs>
+          <rect width="400" height="92" fill="url(#g1)"/>
+          <g fill="#ffc400"><path d="M200 22l5.9 12 13.1 1.9-9.5 9.3 2.2 13.1L200 52.1 188.3 58.3l2.2-13.1-9.5-9.3 13.1-1.9z"/></g>
+          <g fill="#ff9fcb"><path d="M120 50l3.5 7.1 7.8 1.1-5.6 5.5 1.3 7.8-7-3.7-7 3.7 1.3-7.8-5.6-5.5 7.8-1.1z"/></g>
+          <g fill="#8ecbff"><path d="M280 44l3.5 7.1 7.8 1.1-5.6 5.5 1.3 7.8-7-3.7-7 3.7 1.3-7.8-5.6-5.5 7.8-1.1z"/></g>
+          <g fill="#7ee0c3"><path d="M60 20l2.6 5.3 5.8.8-4.2 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z"/></g>
+          <g fill="#c9a7ff"><path d="M345 18l2.6 5.3 5.8.8-4.2 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z"/></g>
+          <g fill="#fff" opacity=".7"><circle cx="30" cy="62" r="1.5"/><circle cx="90" cy="30" r="1.2"/><circle cx="160" cy="16" r="1.4"/><circle cx="240" cy="74" r="1.2"/><circle cx="320" cy="76" r="1.5"/><circle cx="375" cy="56" r="1.2"/></g>
+        </svg>
+      </span>
+      <div class="body">
+        <p class="shop">ほしのうたカフェ（架空）</p>
+        <h2>星あつめチャレンジ</h2>
+        <dl>
+          <dt>遊び方</dt>
+          <dd>30秒のあいだ、出てくる星をタップして点数を集めます。</dd>
+          <dt>向いている使い方</dt>
+          <dd>店頭のイベントや、待ち時間の楽しみに。</dd>
+        </dl>
+        <a class="play" href="sample1/">遊んでみる <span aria-hidden="true">→</span></a>
+      </div>
+    </li>
+
+    <li class="card c2">
+      <span class="band" aria-hidden="true">
+        <svg viewBox="0 0 400 92" preserveAspectRatio="xMidYMid slice">
+          <rect width="400" height="92" fill="#f6eedf"/>
+          <g fill="#b9502b">
+            <rect x="0" y="0" width="400" height="22"/>
           </g>
-          <g data-art="sparkle">
-            <circle cx="120" cy="112" r="96" fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-dasharray="2 7"/>
-            <path d="M120 36 Q 124 108, 196 112 Q 124 116, 120 188 Q 116 116, 44 112 Q 116 108, 120 36 Z" fill="var(--main)"/>
-            <path d="M120 78 Q 121 111, 154 112 Q 121 113, 120 146 Q 119 113, 86 112 Q 119 111, 120 78 Z" fill="var(--bg)" opacity=".35"/>
-            <path d="M184 34 Q 186 58, 208 60 Q 186 62, 184 86 Q 182 62, 160 60 Q 182 58, 184 34 Z" fill="var(--accent)"/>
-            <path d="M58 150 Q 59 165, 74 166 Q 59 167, 58 182 Q 57 167, 42 166 Q 57 165, 58 150 Z" fill="var(--accent)" opacity=".85"/>
-            <circle cx="196" cy="160" r="4" fill="var(--main)" opacity=".6"/>
-            <circle cx="52" cy="66" r="3" fill="var(--main)" opacity=".6"/>
+          <g fill="#fffaf1">
+            <rect x="25" y="0" width="25" height="22"/><rect x="75" y="0" width="25" height="22"/><rect x="125" y="0" width="25" height="22"/><rect x="175" y="0" width="25" height="22"/><rect x="225" y="0" width="25" height="22"/><rect x="275" y="0" width="25" height="22"/><rect x="325" y="0" width="25" height="22"/><rect x="375" y="0" width="25" height="22"/>
+          </g>
+          <path d="M0 22 q12.5 12 25 0 q12.5 12 25 0 q12.5 12 25 0 q12.5 12 25 0 q12.5 12 25 0 q12.5 12 25 0 q12.5 12 25 0 q12.5 12 25 0 q12.5 12 25 0 q12.5 12 25 0 q12.5 12 25 0 q12.5 12 25 0 q12.5 12 25 0 q12.5 12 25 0 q12.5 12 25 0 q12.5 12 25 0z" fill="#b9502b"/>
+          <g transform="translate(200 56)">
+            <ellipse cx="0" cy="0" rx="46" ry="18" fill="#d29a52"/>
+            <ellipse cx="0" cy="-3" rx="42" ry="13" fill="#e2b06a"/>
+            <path d="M-24 -8 q6 8 12 0 M-6 -9 q6 8 12 0 M12 -8 q6 8 12 0" stroke="#a4692e" stroke-width="2.4" fill="none" stroke-linecap="round"/>
+          </g>
+          <g fill="#5f7d3a" opacity=".55"><circle cx="90" cy="66" r="4"/><circle cx="310" cy="66" r="4"/></g>
+        </svg>
+      </span>
+      <div class="body">
+        <p class="shop">パン工房 むぎとこね（架空）</p>
+        <h2>焼きたてスクラッチ</h2>
+        <dl>
+          <dt>遊び方</dt>
+          <dd>9マスから1つ選び、指でこすって景品を確かめます。</dd>
+          <dt>向いている使い方</dt>
+          <dd>来店の記念や、お会計のときのくじに。</dd>
+        </dl>
+        <a class="play" href="sample2/">遊んでみる <span aria-hidden="true">→</span></a>
+      </div>
+    </li>
+
+    <li class="card c3">
+      <span class="band" aria-hidden="true">
+        <svg viewBox="0 0 400 92" preserveAspectRatio="xMidYMid slice">
+          <rect width="400" height="92" fill="#e6ede3"/>
+          <g fill="#2f5d50" opacity=".22">
+            <path d="M40 80 q-8 -28 18 -44 q6 30 -18 44z"/>
+            <path d="M350 82 q-6 -30 22 -42 q2 30 -22 42z"/>
+            <path d="M92 24 q14 -12 30 -4 q-14 14 -30 4z"/>
+            <path d="M290 26 q12 -14 30 -8 q-12 16 -30 8z"/>
+          </g>
+          <g transform="translate(200 54)">
+            <path d="M-30 -14 h60 v6 a30 30 0 0 1 -60 0z" fill="#f7f8f2" stroke="#2f5d50" stroke-width="2.5"/>
+            <ellipse cx="0" cy="-12" rx="28" ry="4" fill="#b9d58a"/>
+            <path d="M30 -8 q14 0 12 10 q-2 8 -14 6" fill="none" stroke="#2f5d50" stroke-width="2.5"/>
+            <path d="M-8 -22 q-4 -6 0 -12 M6 -22 q-4 -6 0 -12" fill="none" stroke="#c99a3b" stroke-width="2" stroke-linecap="round"/>
+            <path d="M-40 26 h80" stroke="#2f5d50" stroke-width="2.5" stroke-linecap="round"/>
           </g>
         </svg>
+      </span>
+      <div class="body">
+        <p class="shop">ハーブティーの店 そよぎ（架空）</p>
+        <h2>今日の一杯診断</h2>
+        <dl>
+          <dt>遊び方</dt>
+          <dd>6つの質問に答えると、今の気分に合う一杯をおすすめします。</dd>
+          <dt>向いている使い方</dt>
+          <dd>商品選びの案内や、おすすめの紹介に。</dd>
+        </dl>
+        <a class="play" href="sample3/">遊んでみる <span aria-hidden="true">→</span></a>
       </div>
-      <h1 class="t-name" id="tName"></h1>
-      <p class="t-lead" id="tLead"></p>
-      <p class="t-meta"><span><b id="tQs"></b><span id="tQsUnit"></span></span><span id="tTime"><b id="tTimeNum"></b><span id="tTimeUnit"></span></span></p>
-      <button class="btn" id="startBtn" type="button"></button>
-      <p class="sample-note t-sample" id="tSample"></p>
-    </div>
-  </section>
+    </li>
+  </ul>
 
-  <section id="quizScreen" class="screen" aria-label="質問画面">
-    <div class="col" id="quizCol">
-      <div class="q-top">
-        <button class="back" id="backBtn" type="button"></button>
-        <div class="bar" aria-hidden="true"><i id="barFill"></i></div>
-        <p class="count" aria-live="polite"><b id="qNow">1</b> / <span id="qAll">6</span></p>
-      </div>
-      <p class="q-num" id="qNum" aria-hidden="true">Q1</p>
-      <h2 class="q-text" id="qText"></h2>
-      <div class="choices" id="choices" role="group"></div>
-    </div>
-  </section>
-
-  <section id="brewScreen" class="screen" aria-label="結果を準備中">
-    <svg class="brew-cup" id="brewCup" viewBox="0 0 150 150" aria-hidden="true">
-      <defs><clipPath id="cupIn"><path d="M27 52 H 115 L 108 106 C 106 120, 95 126, 82 126 H 60 C 47 126, 36 120, 34 106 Z"/></clipPath></defs>
-      <g data-art="cup">
-        <g class="steam" fill="none" stroke="var(--ink)" stroke-width="2.5" stroke-linecap="round" opacity=".6">
-          <path d="M55 40 c -7 -9 7 -12 0 -22"/><path d="M71 42 c -7 -10 7 -13 0 -24"/><path d="M87 40 c -7 -9 7 -12 0 -22"/>
-        </g>
-        <g clip-path="url(#cupIn)"><rect class="fill" x="20" y="56" width="100" height="74" fill="var(--liquid)"/></g>
-        <path d="M27 52 H 115 L 108 106 C 106 120, 95 126, 82 126 H 60 C 47 126, 36 120, 34 106 Z" fill="none" stroke="var(--ink)" stroke-width="3"/>
-        <path d="M113 66 C 136 64, 136 96, 108 98" fill="none" stroke="var(--ink)" stroke-width="3"/>
-        <ellipse cx="71" cy="136" rx="58" ry="6" fill="none" stroke="var(--ink)" stroke-width="2.5"/>
-      </g>
-      <g data-art="sparkle">
-        <g class="steam" fill="var(--accent)">
-          <path d="M120 16 Q 121 29, 134 30 Q 121 31, 120 44 Q 119 31, 106 30 Q 119 29, 120 16 Z"/>
-          <path d="M28 104 Q 29 113, 38 114 Q 29 115, 28 124 Q 27 115, 18 114 Q 27 113, 28 104 Z"/>
-          <path d="M124 112 Q 125 119, 132 120 Q 125 121, 124 128 Q 123 121, 116 120 Q 123 119, 124 112 Z"/>
-        </g>
-        <path class="spark" d="M75 18 Q 79 71, 132 75 Q 79 79, 75 132 Q 71 79, 18 75 Q 71 71, 75 18 Z" fill="var(--res)"/>
-      </g>
-    </svg>
-    <p class="brew-msg"><span id="brewText"></span><span class="brew-dots" id="brewDots"></span></p>
-  </section>
-
-  <section id="resultScreen" class="screen" aria-label="結果画面" aria-live="polite">
-    <div class="col" id="resultCol">
-      <p class="r-label" id="rLabel"></p>
-      <div class="r-head pop">
-        <svg class="r-art" id="rArt" viewBox="0 0 120 120" aria-hidden="true"></svg>
-        <div>
-          <p class="r-copy" id="rCopy"></p>
-          <h2 class="r-name" id="rName"></h2>
-        </div>
-      </div>
-      <div class="r-body pop">
-        <p class="r-text" id="rText"></p>
-        <p class="r-reason" id="rReason"></p>
-        <p class="r-note" id="rNote"></p>
-        <p class="sample-note r-sample" id="rSample"></p>
-      </div>
-      <div class="r-btns">
-        <button class="btn x" id="shareBtn" type="button"></button>
-        <button class="btn ghost" id="againBtn" type="button"></button>
-      </div>
-    </div>
-  </section>
-
-  <section id="errorScreen" class="screen" aria-label="設定の間違い" role="alert">
-    <div class="col">
-      <p class="e-title">設定（CONFIG）に間違いがあるため、診断を始められません</p>
-      <p class="e-lead">このファイルの上の方にある CONFIG の、次の所を直してください。</p>
-      <ul class="e-list" id="errList"></ul>
-    </div>
-  </section>
-
-  <div id="credit"></div>
-
-<script id="quiz-ui">
-(function () {
-  "use strict";
-  var C = (typeof CONFIG !== "undefined" && CONFIG && typeof CONFIG === "object") ? CONFIG : null, L = QuizLogic;
-  function $(id) { return document.getElementById(id); }
-  var SCREENS = ["titleScreen", "quizScreen", "brewScreen", "resultScreen", "errorScreen"];
-  function show(id) {
-    SCREENS.forEach(function (s) { $(s).classList.toggle("show", s === id); });
-  }
-
-  // 起動のときに設定を確かめる。間違いがあれば、何が違うかを画面に出して止める
-  var problems = L.checkConfig(C);
-  if (problems.length) {
-    var list = $("errList");
-    problems.forEach(function (m) { var li = document.createElement("li"); li.textContent = m; list.appendChild(li); });
-    if (window.console && console.warn) console.warn("CONFIG に間違いがあります:\n" + problems.join("\n"));
-    show("errorScreen");
-    return;
-  }
-
-  var Q = C.questions, R = C.results;
-  var T = (C.texts && typeof C.texts === "object") ? C.texts : {};
-  function txt(k, def) { return typeof T[k] === "string" ? T[k] : def; }
-
-  var reduceMotion = false;
-  try { reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (e) {}
-
-  // 色を CSS に渡す
-  var root = document.documentElement.style, col = C.colors || {};
-  ["bg", "paper", "ink", "main", "accent"].forEach(function (k) { if (col[k]) root.setProperty("--" + k, col[k]); });
-  if (col.onMain) root.setProperty("--on-main", col.onMain);
-  if (col.share) root.setProperty("--share", col.share);
-  if (col.shareInk) root.setProperty("--share-ink", col.shareInk);
-
-  // 絵を選ぶ（"cup" か "sparkle"。ほかの値は絵なし）。選ばなかった絵は消す
-  var ART = C.art === "cup" || C.art === "sparkle" ? C.art : "none";
-  Array.prototype.forEach.call(document.querySelectorAll("[data-art]"), function (g) {
-    if (g.getAttribute("data-art") !== ART) g.parentNode.removeChild(g);
-  });
-  // 絵なしのとき：タイトルの絵の場所は空けたまま（文字の位置を変えない）、待つ間と結果の絵は出さない
-  if (ART === "none") { $("brewCup").style.display = "none"; $("rArt").style.display = "none"; }
-  var meta = document.querySelector('meta[name="theme-color"]');
-  if (meta && col.bg) meta.setAttribute("content", col.bg);
-
-  // 文字を入れる
-  document.title = [C.quizName, C.shopName].filter(Boolean).join("｜") || document.title;
-  $("tShop").textContent = C.shopName || "";
-  $("tName").textContent = C.quizName || "";
-  $("tLead").textContent = C.lead || "";
-  $("tQs").textContent = Q.length;
-  $("tQsUnit").textContent = txt("questionUnit", "問");
-  $("tTimeNum").textContent = txt("timeNum", "1");
-  $("tTimeUnit").textContent = txt("timeUnit", "分ほど");
-  $("tTime").style.display = txt("timeNum", "1") ? "" : "none";
-  $("backBtn").textContent = txt("back", "もどる");
-  $("brewText").textContent = txt("brewing", "あなたの一杯を\nブレンドしています");
-  $("brewDots").textContent = txt("brewingDots", "・・・");
-  // 架空のお店の見本である、という注意書き（"" にすると出ない）
-  ["tSample", "rSample"].forEach(function (id) {
-    $(id).textContent = C.sampleNote || "";
-    $(id).style.display = C.sampleNote ? "" : "none";
-  });
-  $("startBtn").textContent = C.startLabel || "はじめる";
-  $("qAll").textContent = Q.length;
-  $("rLabel").textContent = C.resultLabel || "";
-  $("shareBtn").textContent = C.shareLabel || "シェア";
-  $("againBtn").textContent = C.againLabel || "もう一度";
-  $("credit").textContent = C.credit || "";
-
-  var answers = [], current = 0, busy = false, brewTimer = null, lockTimer = null, lastResult = null;
-
-  // 中身が画面からはみ出すときは、段階的に文字を小さくする。それでも収まらなければ縦スクロールにする
-  function fit(colEl) {
-    colEl.classList.remove("fit1", "fit2", "fit-scroll");
-    if (overflows(colEl)) colEl.classList.add("fit1");
-    if (overflows(colEl)) colEl.classList.add("fit2");
-    if (overflows(colEl)) colEl.classList.add("fit-scroll");
-    colEl.scrollTop = 0;
-  }
-  function overflows(colEl) { return colEl.scrollHeight > colEl.clientHeight + 1 || overflowsChildren(colEl); }
-  function overflowsChildren(colEl) {
-    var els = colEl.querySelectorAll(".choice, .r-body");
-    for (var i = 0; i < els.length; i++) if (els[i].scrollHeight > els[i].clientHeight + 1) return true;
-    return false;
-  }
-
-  function renderQuestion() {
-    var q = Q[current];
-    $("qNow").textContent = current + 1;
-    $("qNum").textContent = txt("questionMark", "Q") + (current + 1);
-    $("qText").textContent = q.q;
-    $("barFill").style.width = ((current) / Q.length * 100) + "%";
-    var box = $("choices");
-    box.innerHTML = "";
-    box.setAttribute("aria-label", q.q);
-    var keys = "ABCD";
-    q.choices.forEach(function (c, i) {
-      if (!c || typeof c !== "object") return;
-      var b = document.createElement("button");
-      b.type = "button";
-      b.className = "choice" + (answers[current] === i ? " on" : "");
-      b.setAttribute("aria-pressed", answers[current] === i ? "true" : "false");
-      var k = document.createElement("span"); k.className = "k"; k.textContent = keys.charAt(i) || (i + 1);
-      var l = document.createElement("span"); l.className = "l"; l.textContent = c.label;
-      b.appendChild(k); b.appendChild(l);
-      b.addEventListener("click", function () { choose(i); });
-      box.appendChild(b);
-    });
-    var colEl = $("quizCol");
-    if (!reduceMotion) { colEl.classList.remove("pop"); void colEl.offsetWidth; colEl.classList.add("pop"); }
-    fit(colEl);
-  }
-
-  function choose(i) {
-    if (busy) return;
-    busy = true;
-    answers[current] = i;
-    var btns = $("choices").children;
-    for (var j = 0; j < btns.length; j++) {
-      btns[j].classList.toggle("on", j === i);
-      btns[j].setAttribute("aria-pressed", j === i ? "true" : "false");
-    }
-    $("barFill").style.width = ((current + 1) / Q.length * 100) + "%";
-    setTimeout(function () {
-      busy = false;
-      if (current < Q.length - 1) { current++; renderQuestion(); }
-      else finish();
-    }, reduceMotion ? 120 : 260);
-  }
-
-  function back() {
-    if (busy) return;
-    if (current === 0) { showTitle(); return; }
-    current--;
-    renderQuestion();
-  }
-
-  function finish() {
-    var res = L.pickResult(answers, Q, R);
-    if (!res) { showTitle(); return; }
-    lastResult = res;
-    var st = document.documentElement.style;
-    st.setProperty("--res", res.color || col.main);
-    st.setProperty("--liquid", res.liquid || col.accent);
-    var delay = Math.max(0, Number(C.resultDelay) || 0);
-    if (reduceMotion) delay = Math.min(delay, 0.6);
-    st.setProperty("--brew", delay + "s");
-    var brew = $("brewScreen");
-    brew.classList.remove("brewing"); void brew.offsetWidth; brew.classList.add("brewing");
-    show("brewScreen");
-    clearTimeout(brewTimer);
-    brewTimer = setTimeout(function () { renderResult(res); }, delay * 1000 + 250);
-  }
-
-  var MARKS = {
-    moon: '<path d="M96 14 a 15 15 0 1 0 14 22 a 12 12 0 1 1 -14 -22 Z" fill="var(--res)"/>',
-    leaf: '<path d="M88 34 C 90 12, 108 6, 116 8 C 116 26, 106 36, 88 34 Z" fill="var(--res)"/><path d="M90 32 L 112 12" stroke="#fff" stroke-width="1.5"/>',
-    sun: '<circle cx="100" cy="22" r="9" fill="var(--res)"/><g stroke="var(--res)" stroke-width="3" stroke-linecap="round"><path d="M100 5v4M100 35v4M83 22h4M113 22h4M88 10l3 3M109 31l3 3M88 34l3-3M109 13l3-3"/></g>',
-    flower: '<g fill="var(--res)"><circle cx="100" cy="12" r="6"/><circle cx="110" cy="20" r="6"/><circle cx="106" cy="32" r="6"/><circle cx="94" cy="32" r="6"/><circle cx="90" cy="20" r="6"/></g><circle cx="100" cy="23" r="4.5" fill="var(--accent)"/>'
-  };
-  function cupSvg(mark) {
-    return '<path d="M14 50 H 86 L 80 92 C 78 104, 70 108, 60 108 H 40 C 30 108, 22 104, 20 92 Z" fill="var(--liquid)" stroke="var(--ink)" stroke-width="2.5"/>' +
-      '<path d="M14 50 H 86 L 84 60 H 16 Z" fill="var(--paper)" opacity=".55"/>' +
-      '<path d="M84 60 C 104 58, 104 86, 80 88" fill="none" stroke="var(--ink)" stroke-width="2.5"/>' +
-      '<ellipse cx="50" cy="114" rx="44" ry="4.5" fill="none" stroke="var(--ink)" stroke-width="2"/>' +
-      '<path d="M38 40 c -6 -8 6 -11 0 -20 M56 42 c -6 -8 6 -11 0 -20" fill="none" stroke="var(--ink)" stroke-width="2" stroke-linecap="round" opacity=".45"/>' +
-      (MARKS[mark] || MARKS.leaf);
-  }
-
-  // 結果画面の絵（きらめきの絵のときは、カップの代わりに、結果の色のきらめき）
-  function sparkleSvg(mark) {
-    return '<path d="M52 18 Q 56 62, 100 66 Q 56 70, 52 114 Q 48 70, 4 66 Q 48 62, 52 18 Z" fill="var(--res)"/>' +
-      '<path d="M52 44 Q 53 64, 74 66 Q 53 68, 52 88 Q 51 68, 30 66 Q 51 64, 52 44 Z" fill="var(--paper)" opacity=".45"/>' +
-      (MARKS[mark] || MARKS.leaf);
-  }
-
-  function renderResult(res) {
-    if (ART === "cup") $("rArt").innerHTML = cupSvg(res.mark);
-    else if (ART === "sparkle") $("rArt").innerHTML = sparkleSvg(res.mark);
-    $("rCopy").textContent = res.copy || "";
-    $("rName").textContent = res.name || "";
-    $("rText").textContent = res.text || "";
-    $("rReason").textContent = res.reason || "";
-    $("rReason").style.display = res.reason ? "" : "none";
-    var note = $("rNote");
-    note.textContent = C.shopNote || "";
-    note.style.display = C.shopNote ? "" : "none";
-    var heads = document.querySelectorAll("#resultCol .pop");
-    for (var i = 0; i < heads.length; i++) { heads[i].style.animation = "none"; void heads[i].offsetWidth; heads[i].style.animation = ""; }
-    // 結果が出た直後の連打で、シェアや「もう一度」がすぐ動かないように、少しの間だけ押せなくする
-    var btns = [$("shareBtn"), $("againBtn")];
-    btns.forEach(function (b) { b.disabled = true; });
-    clearTimeout(lockTimer);
-    lockTimer = setTimeout(function () { btns.forEach(function (b) { b.disabled = false; }); }, 700);
-    show("resultScreen");
-    fit($("resultCol"));
-    $("brewScreen").classList.remove("brewing");
-  }
-
-  function showTitle() {
-    show("titleScreen");
-    fit($("titleCol"));
-  }
-
-  function start() {
-    answers = []; current = 0; busy = false;
-    show("quizScreen");
-    renderQuestion();
-  }
-
-  $("startBtn").addEventListener("click", start);
-  $("backBtn").addEventListener("click", back);
-  $("againBtn").addEventListener("click", function () { clearTimeout(brewTimer); showTitle(); });
-  $("shareBtn").addEventListener("click", function () {
-    if (!lastResult) return;
-    window.open(L.shareHref(C, lastResult), "_blank", "noopener");
-  });
-
-  // 画面の大きさが変わったら収まり方を見直す
-  window.addEventListener("resize", function () {
-    if ($("titleScreen").classList.contains("show")) fit($("titleCol"));
-    if ($("quizScreen").classList.contains("show")) fit($("quizCol"));
-    if ($("resultScreen").classList.contains("show")) fit($("resultCol"));
-  });
-  fit($("titleCol"));
-})();
-</script>
+  <footer>
+    <p>※ 掲載している店名・景品はすべて架空の見本です</p>
+    <p>Sample by Ryvona</p>
+  </footer>
+</div>
 </body>
 </html>
