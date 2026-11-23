@@ -1,239 +1,1211 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Ryvona のミニゲーム見本</title>
-<meta name="description" content="スマホで遊べる、お店の販促用ミニゲームの見本です。店名と景品はすべて架空です。">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="color-scheme" content="light">
+<meta name="theme-color" content="#777777">
+<title>ミニゲーム</title>
+
+<script id="game-config">
+/* =====================================================================
+   設定（ここを書き換えるだけで、別のお店・イベント用にできます）
+   ※ 景品の金額には法律（景品表示法）の上限があります。くじで出す景品は、お店で上限を確認してから決めてください。
+
+   この見本を別のお店に使うときに変える所：
+     1. shopName と eventName（店名とくじの名前）
+     2. colors（色。背景を濃くするときは、下の色の説明の注意を読む）
+     3. art（タイトル画面の絵。パン屋でなければ "gift" か "none"）
+     4. prizes と miss（景品・確率・はずれの文。景品名は全角12字くらいまで）
+     5. texts の lead など、業種に合わない文（はずれの message、heroMark など）
+     6. storageKey（お店ごとに別の名前にする）
+     7. sampleNotice を ""（空）にする。credit はお店の希望に合わせる
+     ※ ファイルの冒頭の <title> と theme-color も、お店の名前と色にしておく
+   ===================================================================== */
+const CONFIG = {
+  // ---- お店・イベントの名前 ----
+  shopName: "パン工房 むぎとこね",   // 店名（画面の上に表示）
+  eventName: "焼きたてスクラッチ",    // くじの名前（タイトルとして大きく表示）
+
+  // ---- 色（"#rrggbb" の形で書きます） ----
+  // 背景（paper）を濃くしたら、文字（ink）を明るく、券（card）とマス（cell）を濃くして、文字が読めるようにする
+  // そのときは main も明るめにする（券の上の店名や「この画面をスタッフに見せてね」は main の色の文字のため）
+  colors: {
+    main: "#b9502b",       // メインの色（ボタン、テント、見出しの飾り）
+    sub: "#5f7d3a",        // サブの色（けずった量のゲージ、小さな飾り）
+    paper: "#f6eedf",      // 背景の色（生成りの紙の色）
+    stripe: "#fffaf1",     // テントのしまの明るい方の色
+    ink: "#4a2e1c",        // 文字の色
+    crust: "#d29a52",      // カードのけずる面の色（明るい方）
+    crustDark: "#a4692e",  // カードのけずる面の色（暗い方）
+    miss: "#8a7a68",       // はずれの色
+    card: "#fffdf8",       // 券（けずるカード・結果の券）と、タイトル画面の小さなカードの地の色
+    cell: "#fffaf1",       // けずったあとのマスの地の色
+    shadow: "#4a2e1c",     // 券やテントの影の色（うすくして使う）
+    guide: "#4a2e1c",      // マスの上の案内（「ここを こすってね」）の帯の色
+    guideInk: "#fffaf1",   // 案内の帯の文字の色
+    onColor: "#ffffff"     // 色の付いたボタン・札（大当たり など）の上の文字の色
+  },
+
+  // ---- タイトル画面の絵 ----
+  // "bread"（食パン。パン屋向け）、"gift"（プレゼントの箱。どの業種でも使える）、"none"（絵なし）のどれか。
+  // ほかの値のときは、絵なしになります
+  art: "bread",
+
+  // ---- 景品の一覧 ----
+  // カードは 3×3 の9マスです。遊ぶ人は1マスを選んでけずり、そのマスの中身が結果になります。
+  // 選んだマスも、結果のあとに開く残り8マスも、1マスずつ下の確率で別々に（独立に）決めます。
+  // 演出のために大当たりを増やしたり減らしたりはしません。
+  // そのため、残り8マスに大当たりが並ぶことも、1つも出ないこともあります。
+  //
+  // rate   : 出る確率（%）。合計が100にならなくても動きます（下の miss を参照）
+  // label  : 結果の見出し（大当たり、当たり など）。マスの中にも表示するので、短めに（4文字くらいまで）
+  // name   : 景品の名前（結果画面に大きく表示）
+  // note   : 景品の説明・使い方（小さく表示）
+  // color  : 景品の色
+  // effect : 演出の大きさ。"big"（大）、"mid"（中）、"small"（小）のどれか
+  prizes: [
+    { rate: 3,  label: "大当たり", name: "食パン1斤 プレゼント",  note: "本日中、レジでお渡しします", color: "#c98a00", effect: "big" },
+    { rate: 12, label: "当たり",   name: "お好きなパン1個 無料",  note: "300円までのパンが対象です", color: "#b9502b", effect: "mid" },
+    { rate: 35, label: "小当たり", name: "お会計から 30円引き",    note: "本日のお会計で使えます",     color: "#5f7d3a", effect: "small" }
+  ],
+
+  // ---- はずれの扱い ----
+  // enabled: true  … 確率の合計が100%に足りない分が「はずれ」になります（上の初期値なら 50% がはずれ）
+  // enabled: false … はずれなし。合計が100%でなくても、確率の比で必ずどれかの景品が出ます
+  // 合計が100%を超えたときは、比で割り振ります（はずれは出ません）。確率がすべて0なら、はずれになります
+  miss: {
+    enabled: true,
+    label: "はずれ",
+    name: "ざんねん…",
+    message: "また焼きたてを食べに来てね"
+  },
+
+  // ---- けずり方 ----
+  // 選んだマスの何%をけずったら、残りを自動で消して結果を出すか（1〜100）。
+  // 小数は四捨五入します。1より小さい値（0 やマイナス）は 1、100より大きい値は 100 にします。
+  // 数でない値や、空（"" や null）のときは 50 にします。
+  revealPercent: 50,
+
+  // ---- 1日1回の制限 ----
+  // true にすると、同じ端末・同じ日の2回目は引けず、その日の結果をもう一度表示します
+  // （ブラウザの保存機能 localStorage を使います。使えない環境では制限なしで遊べます。
+  //   その環境では「1日1回」の案内も出しません）
+  dailyLimit: false,
+
+  // ---- 結果画面の文 ----
+  prizeNote: "この画面をスタッフに見せてね",
+
+  // ---- 見本であることの表示 ----
+  // タイトル画面と結果画面（景品の欄のすぐ下）に出します。
+  // 実際のお店に納品するときは "" （空）にすると消えます
+  sampleNotice: "※ 架空のお店の見本です",
+
+  // ---- 画面の文 ----
+  // {pct} はけずる割合（revealPercent）、{label} は景品の label に置きかわります
+  texts: {
+    lead: "9つのマスから1つ選んで、指でこすってね", // タイトル画面の説明
+    heroMark: "当",                    // タイトル画面の、小さなカードの絵に出す1文字
+    start: "カードをけずる",            // スタートボタン
+    noteLimit: "参加は1日1回まで",      // タイトル画面の下の注意（1日1回の制限が効いているときだけ出ます）
+    noteMiss: "はずれもあります",       // タイトル画面の下の注意（はずれが出る設定のときだけ出ます）
+    noteJoin: "／",                     // 上の2つを並べるときの区切り
+    ticketBrand: "SCRATCH",            // けずる画面の券の右上の文字
+    guide: "ここを こすってね",         // マスの上に重ねる案内
+    guideSub: "好きなマスを1つ",
+    stepChoose: "マスを1つ えらんでね", // けずる画面の見出し（マスを選ぶ前）
+    stepScratch: "そのマスを こすってね", // （マスを選んだあと）
+    hint: "えらんだマスを{pct}%けずると、結果が出ます",
+    meterLabel: "えらんだマスの けずった量",
+    mineTag: "えらんだマス",           // 選んだマスの下に付く札
+    stepHit: "{label}！",              // 当たりが出たときの見出し
+    stepMiss: "ざんねん…",             // はずれのときの見出し
+    stepOthers: "ほかのマスは…",       // 残りのマスを開くときの見出し
+    seeResult: "結果を見る",           // 残りのマスが開いたあとに出るボタン
+    resHit: "おめでとう！",            // 結果画面の見出し（当たり）
+    resMiss: "けっか",                 // （はずれ）
+    resRevisit: "今日の結果",          // （1日1回の制限で、今日の結果をもう一度出すとき）
+    metaTime: "日時",
+    metaCode: "確認番号",
+    retry: "もう一度ひく",
+    limitDone: "参加は1日1回です。また明日どうぞ！",
+    limitRevisit: "今日はもう引きました。また明日どうぞ！"
+  },
+
+  // ---- その他 ----
+  credit: "Sample by Ryvona",                  // 画面の隅に出す小さな文字
+  storageKey: "mugitokone-scratch-today"       // 今日の結果を保存する名前（お店ごとに変える）
+};
+</script>
+
+<script id="game-logic">
+/* =====================================================================
+   くじの計算（画面に依存しない小さな関数。node でも試せます）
+   ===================================================================== */
+const ScratchLogic = (function () {
+  // 確率の値を数にする（数でない物、0以下、無限大は 0 とみなす）
+  function toRate(v) {
+    var n = Number(v);
+    return isFinite(n) && n > 0 ? n : 0;
+  }
+
+  // 景品とはずれの「出る割合」の表を作る。index は景品の番号、はずれは -1。p の合計は 1
+  function buildTable(prizes, miss) {
+    var list = Array.isArray(prizes) ? prizes : [];
+    var items = [], sum = 0;
+    for (var i = 0; i < list.length; i++) {
+      var w = toRate(list[i] && list[i].rate);
+      if (w > 0) { items.push({ index: i, w: w }); sum += w; }
+    }
+    var missOn = !miss || miss.enabled !== false;
+    if (missOn && sum < 100) items.push({ index: -1, w: 100 - sum });
+    var total = 0;
+    for (i = 0; i < items.length; i++) total += items[i].w;
+    if (!(total > 0)) return [{ index: -1, p: 1 }];
+    return items.map(function (it) { return { index: it.index, p: it.w / total }; });
+  }
+
+  // 0 以上 1 未満の乱数 r から、当たった景品の番号を返す（はずれは -1）。
+  // r が数でない（NaN など）、または 0〜1 の範囲の外のときは、はずれ（-1）にする。
+  // （はずれなしの設定でも、乱数がおかしいときだけは、はずれ扱いにして当たりが増えないようにする）
+  function pickPrize(r, prizes, miss) {
+    if (typeof r !== "number" || !(r >= 0 && r < 1)) return -1;
+    var table = buildTable(prizes, miss);
+    var acc = 0;
+    for (var i = 0; i < table.length; i++) {
+      acc += table[i].p;
+      if (r < acc) return table[i].index;
+    }
+    return table[table.length - 1].index; // 足し算の誤差で最後まで届かなかったとき
+  }
+
+  // n マスの中身を決める。どのマスも pickPrize で、同じ確率で別々に決める（演出のための調整はしない）
+  function dealCells(rand, n, prizes, miss) {
+    var out = [];
+    for (var i = 0; i < n; i++) out.push(pickPrize(rand(), prizes, miss));
+    return out;
+  }
+
+  // 設定の revealPercent を 1〜100 の整数にする（数でない値・空は 50）
+  function toRevealPercent(v) {
+    if (v === null || v === undefined || v === "" || typeof v === "boolean") return 50;
+    var n = Number(v);
+    if (!isFinite(n)) return 50;
+    return Math.max(1, Math.min(100, Math.round(n)));
+  }
+
+  // 確認番号を作る（見まちがえやすい 0 O 1 I L は使わない）
+  var CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+  function makeCode(rand, len) {
+    var s = "";
+    for (var i = 0; i < (len || 6); i++) {
+      var k = Math.floor(rand() * CODE_CHARS.length);
+      s += CODE_CHARS.charAt(Math.min(CODE_CHARS.length - 1, Math.max(0, k)));
+    }
+    return s;
+  }
+
+  function pad2(n) { return (n < 10 ? "0" : "") + n; }
+  // 端末の時刻での日付（"2026-11-23" の形）。1日1回の判定に使う
+  function dayKey(d) { return d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate()); }
+  // 画面に出す日時（"2026/11/23 14:05" の形）
+  function formatDateTime(d) {
+    return d.getFullYear() + "/" + pad2(d.getMonth() + 1) + "/" + pad2(d.getDate()) + " " + pad2(d.getHours()) + ":" + pad2(d.getMinutes());
+  }
+
+  // 保存してあった結果を読む。今日の物で、形が正しいときだけ返す（それ以外は null）
+  function parseRecord(raw, today) {
+    if (typeof raw !== "string" || !raw) return null;
+    var rec;
+    try { rec = JSON.parse(raw); } catch (e) { return null; }
+    if (!rec || typeof rec !== "object") return null;
+    if (rec.day !== today || typeof rec.name !== "string" || typeof rec.code !== "string" || !isFinite(rec.at)) return null;
+    return rec;
+  }
+
+  // けずった所を、マスを cols x rows の小さな区画に分けて記録する。
+  // 線分 (x0,y0)-(x1,y1) から半径 r 以内に区画の中心がある所を 1 にし、新しく 1 にした数を返す。
+  // w, h はマスの大きさ（座標と同じ単位）
+  function markSegment(grid, cols, rows, w, h, x0, y0, x1, y1, r) {
+    var cw = w / cols, ch = h / rows, added = 0;
+    var c0 = Math.max(0, Math.floor((Math.min(x0, x1) - r) / cw));
+    var c1 = Math.min(cols - 1, Math.floor((Math.max(x0, x1) + r) / cw));
+    var r0 = Math.max(0, Math.floor((Math.min(y0, y1) - r) / ch));
+    var r1 = Math.min(rows - 1, Math.floor((Math.max(y0, y1) + r) / ch));
+    var dx = x1 - x0, dy = y1 - y0, len2 = dx * dx + dy * dy;
+    for (var row = r0; row <= r1; row++) {
+      for (var col = c0; col <= c1; col++) {
+        var k = row * cols + col;
+        if (grid[k]) continue;
+        var px = (col + 0.5) * cw, py = (row + 0.5) * ch;
+        var t = len2 > 0 ? Math.max(0, Math.min(1, ((px - x0) * dx + (py - y0) * dy) / len2)) : 0;
+        var ex = px - (x0 + dx * t), ey = py - (y0 + dy * t);
+        if (ex * ex + ey * ey <= r * r) { grid[k] = 1; added++; }
+      }
+    }
+    return added;
+  }
+
+  // けずれた割合（0〜1）
+  function coverage(grid) {
+    var n = 0;
+    for (var i = 0; i < grid.length; i++) if (grid[i]) n++;
+    return grid.length ? n / grid.length : 0;
+  }
+
+  return { buildTable: buildTable, pickPrize: pickPrize, dealCells: dealCells, toRevealPercent: toRevealPercent,
+           makeCode: makeCode, dayKey: dayKey, formatDateTime: formatDateTime, parseRecord: parseRecord,
+           markSegment: markSegment, coverage: coverage };
+})();
+if (typeof module !== "undefined" && module.exports) { module.exports = ScratchLogic; }
+</script>
+
 <style>
   :root {
-    --bg: #faf9f6;
-    --card: #ffffff;
-    --ink: #24242b;
-    --muted: #5d5d68;
-    --line: #e7e4dd;
-    --shadow: 0 1px 2px rgba(30, 28, 24, .05), 0 6px 20px rgba(30, 28, 24, .06);
+    --main: #b9502b;
+    --sub: #5f7d3a;
+    --paper: #f6eedf;
+    --stripe: #fffaf1;
+    --ink: #4a2e1c;
+    --crust: #d29a52;
+    --crust-dark: #a4692e;
+    --card: #fffdf8;    /* 券の地 */
+    --cell: #fffaf1;    /* マスの地 */
+    --shadow: #4a2e1c;  /* 影 */
+    --guide: #4a2e1c;   /* 案内の帯 */
+    --guide-ink: #fffaf1;
+    --on-color: #fff;   /* 色の付いたボタン・札の上の文字 */
+    --accent: #b9502b;  /* 結果ごとの色（景品の色に切り替える） */
+    --awning: 30px;     /* テントの高さ（しまの部分） */
+    --serif: "Hiragino Mincho ProN", "Yu Mincho", "YuMincho", "BIZ UDPMincho", "Noto Serif JP", serif;
+    --sans: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Yu Gothic", "Meiryo", system-ui, sans-serif;
   }
-  * { box-sizing: border-box; }
-  html { -webkit-text-size-adjust: 100%; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow: hidden; overscroll-behavior: none; }
   body {
-    margin: 0;
-    background: var(--bg);
+    position: fixed; inset: 0;
+    font-family: var(--sans);
     color: var(--ink);
-    font-family: system-ui, -apple-system, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Meiryo", sans-serif;
-    line-height: 1.6;
-    word-break: keep-all;
-    overflow-wrap: anywhere;
+    background-color: var(--paper);
+    /* 小麦粉を散らしたような、細かい点の模様 */
+    background-image:
+      radial-gradient(color-mix(in srgb, var(--ink) 7%, transparent) 1px, transparent 1.6px),
+      radial-gradient(color-mix(in srgb, var(--ink) 5%, transparent) 1px, transparent 1.6px);
+    background-size: 22px 22px, 22px 22px;
+    background-position: 0 0, 11px 11px;
+    touch-action: manipulation;
+    user-select: none; -webkit-user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
   }
-  .wrap {
-    max-width: 1080px;
-    margin: 0 auto;
-    padding: 28px max(16px, env(safe-area-inset-right)) 24px max(16px, env(safe-area-inset-left));
+
+  /* ---------- お店のテント（全画面の上に固定） ---------- */
+  .awning {
+    position: fixed; left: 0; right: 0; top: 0; z-index: 30; pointer-events: none;
+    height: calc(env(safe-area-inset-top, 0px) + var(--awning));
+    background: repeating-linear-gradient(90deg, var(--main) 0 28px, var(--stripe) 28px 56px);
+    filter: drop-shadow(0 3px 0 color-mix(in srgb, var(--shadow) 13%, transparent));
   }
-  header { margin: 0 0 22px; }
+  .awning::after {
+    content: ""; position: absolute; left: 0; right: 0; top: 100%; height: 13px;
+    background:
+      radial-gradient(circle at 14px 0, var(--main) 13.5px, transparent 14px) 0 0 / 56px 14px repeat-x,
+      radial-gradient(circle at 42px 0, var(--stripe) 13.5px, transparent 14px) 0 0 / 56px 14px repeat-x;
+  }
+
+  /* ---------- 画面の共通の型 ----------
+     中身が画面に収まらないときは、画面の中で縦にスクロールできる（カードの上ではスクロールしない） */
+  .screen {
+    position: fixed; inset: 0; z-index: 10;
+    overflow-x: hidden; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
+    padding: calc(env(safe-area-inset-top, 0px) + var(--awning) + 24px) max(18px, env(safe-area-inset-right, 0px)) calc(env(safe-area-inset-bottom, 0px) + 26px) max(18px, env(safe-area-inset-left, 0px));
+    opacity: 0; visibility: hidden;
+    transition: opacity .35s ease, visibility 0s linear .35s;
+  }
+  .screen.show { opacity: 1; visibility: visible; transition: opacity .35s ease; }
+  /* 消えていく途中の画面は、見えていても押せないようにする（visibility は 0.35 秒遅れて切り替わるため） */
+  .screen:not(.show) { pointer-events: none; }
+
+  /* 見本であることの表示 */
+  .sample-notice { font-size: 12px; font-weight: 800; line-height: 1.4; color: var(--ink); text-align: center; letter-spacing: .02em; }
+  .sample-notice[hidden] { display: none; }
+  .title-top .sample-notice { margin-top: 6px; }
+  .coupon .sample-notice { margin-top: 6px; }
+  .inner { width: 100%; max-width: 380px; min-height: 100%; margin: 0 auto; display: flex; flex-direction: column; align-items: center; }
+
+  .shop {
+    display: flex; align-items: center; gap: 10px; width: 100%;
+    font-family: var(--serif); font-weight: 700; font-size: 14px; letter-spacing: .12em; color: var(--main);
+    text-align: center; line-height: 1.4;
+    word-break: keep-all; overflow-wrap: anywhere; /* 長い店名は空白の所で折り返す（日本語の単語の途中で切らない） */
+  }
+  .shop::before, .shop::after { content: ""; flex: 1; min-width: 14px; height: 1px; background: currentColor; opacity: .5; }
+
+  .btn {
+    display: block; width: 100%; border: 0; cursor: pointer;
+    font-family: var(--sans); font-size: 21px; font-weight: 800; letter-spacing: .12em; color: var(--on-color);
+    background: var(--main);
+    padding: 15px 10px; border-radius: 14px;
+    box-shadow: 0 5px 0 color-mix(in srgb, var(--main) 60%, #2a160a);
+    touch-action: manipulation;
+    transition: transform .08s ease, box-shadow .08s ease;
+  }
+  .btn:active { transform: translateY(4px); box-shadow: 0 1px 0 color-mix(in srgb, var(--main) 60%, #2a160a); }
+  .btn:focus-visible { outline: 3px solid var(--sub); outline-offset: 4px; }
+  .btn:disabled { filter: grayscale(.5); opacity: .7; }
+
+  /* ---------- タイトル画面 ---------- */
+  #titleScreen .inner { justify-content: space-between; gap: 8px; }
+  .title-top { width: 100%; text-align: center; }
   h1 {
-    margin: 0 0 6px;
-    font-size: clamp(22px, 6vw, 30px);
-    line-height: 1.3;
-    letter-spacing: .02em;
+    font-family: var(--serif); font-weight: 800; color: var(--ink);
+    font-size: clamp(30px, 9.6vw, 40px); line-height: 1.15; letter-spacing: .04em;
+    margin-top: 6px;
   }
-  .lead { margin: 0; color: var(--muted); font-size: 15px; }
+  .lead { margin-top: 6px; font-size: 14px; font-weight: 700; line-height: 1.5; word-break: keep-all; overflow-wrap: anywhere; }
+  .hero { position: relative; width: 210px; height: clamp(84px, 19vh, 128px); flex: none; }
+  .hero .mini {
+    position: absolute; left: 50%; top: 50%; height: 92%; max-height: 112px; aspect-ratio: 1 / 1;
+    transform: translate(-62%, -50%) rotate(-5deg);
+    border-radius: 10px; background: var(--card); padding: 6px;
+    box-shadow: 0 4px 0 color-mix(in srgb, var(--shadow) 12%, transparent), 0 10px 22px color-mix(in srgb, var(--shadow) 12%, transparent);
+  }
+  .hero .mini-face { width: 100%; height: 100%; display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr); gap: 3px; }
+  .hero .mini-face i { border-radius: 3px; background: linear-gradient(135deg, var(--crust), var(--crust-dark)); }
+  .hero .mini-face i.open {
+    background: var(--cell); box-shadow: inset 0 0 0 2px var(--main);
+    display: flex; align-items: center; justify-content: center;
+    font-style: normal; font-family: var(--serif); font-weight: 800; font-size: 13px; color: var(--main);
+  }
+  .hero .hero-art { position: absolute; right: -6px; bottom: -6px; width: 84px; height: auto; transform: rotate(8deg); }
+  .hero .hero-art svg { width: 100%; height: auto; display: block; }
+  .hero .bob { animation: bob 3s ease-in-out infinite; }
+  /* 絵なし（art: "none"）のときは、小さなカードを真ん中に置く */
+  .hero.no-art .mini { transform: translate(-50%, -50%) rotate(-5deg); }
+  @keyframes bob { 0%,100% { transform: rotate(8deg) translateY(0); } 50% { transform: rotate(4deg) translateY(-5px); } }
 
-  .cards {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: grid;
-    gap: 16px;
-    grid-template-columns: 1fr;
+  .prize-list { list-style: none; width: 100%; border-top: 1px dashed color-mix(in srgb, var(--ink) 35%, transparent); }
+  .prize-list li {
+    display: flex; align-items: center; gap: 10px; padding: 7px 2px;
+    border-bottom: 1px dashed color-mix(in srgb, var(--ink) 35%, transparent); font-size: 14px; font-weight: 700;
   }
-  .card {
-    background: var(--card);
-    border: 1px solid var(--line);
-    border-radius: 16px;
-    overflow: hidden;
-    box-shadow: var(--shadow);
-    display: flex;
-    flex-direction: column;
+  .prize-list .tag {
+    flex: none; min-width: 66px; text-align: center; font-size: 11px; font-weight: 800; letter-spacing: .06em;
+    color: var(--on-color); background: var(--c, var(--main)); border-radius: 4px; padding: 3px 6px;
   }
-  .band { display: block; height: 92px; }
-  .band svg { display: block; width: 100%; height: 100%; }
-  .body { padding: 14px 18px 18px; display: flex; flex-direction: column; flex: 1; }
-  .shop { margin: 0; font-size: 13px; color: var(--muted); }
-  h2 { margin: 2px 0 10px; font-size: 20px; line-height: 1.35; }
-  dl { margin: 0 0 16px; font-size: 14px; }
-  dt {
-    display: inline-block;
-    font-size: 12px;
-    font-weight: 700;
-    padding: 1px 8px;
-    border-radius: 999px;
-    background: var(--tint);
-    color: var(--accent);
-  }
-  dd { margin: 4px 0 10px; }
-  dd:last-child { margin-bottom: 0; }
-  .play {
-    margin-top: auto;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    min-height: 48px;
-    padding: 10px 16px;
-    border-radius: 12px;
-    background: var(--accent);
-    color: #fff;
-    font-weight: 700;
-    font-size: 16px;
-    text-decoration: none;
-  }
-  .play:hover { filter: brightness(1.08); }
-  .play:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
+  .prize-list .nm { flex: 1; min-width: 0; word-break: keep-all; overflow-wrap: anywhere; line-height: 1.3; }
+  .title-bottom { width: 100%; }
+  .small-note { margin-top: 9px; text-align: center; font-size: 12px; font-weight: 700; opacity: .72; }
 
-  .c1 { --accent: #5a4bc2; --tint: #ecebfb; }
-  .c2 { --accent: #b9502b; --tint: #f8ece2; }
-  .c3 { --accent: #2f5d50; --tint: #e6ede3; }
+  /* ---------- けずる画面 ---------- */
+  #scratchScreen .inner {
+    display: grid; justify-content: stretch; align-content: center; justify-items: center; row-gap: 12px;
+    grid-template-columns: 100%; grid-template-areas: "title" "ticket" "meter";
+  }
+  .scratch-title { grid-area: title; width: 100%; }
+  .step-title { font-family: var(--serif); font-weight: 800; font-size: 24px; letter-spacing: .06em; text-align: center; line-height: 1.3; }
+  .step-title small[hidden] { display: none; }
+  .step-title small { display: block; font-family: var(--sans); font-size: 13px; font-weight: 700; letter-spacing: 0; opacity: .72; margin-top: 3px; }
+  .ticket-wrap { grid-area: ticket; width: 100%; filter: drop-shadow(0 4px 0 color-mix(in srgb, var(--shadow) 12%, transparent)) drop-shadow(0 12px 18px color-mix(in srgb, var(--shadow) 14%, transparent)); }
+  .ticket {
+    position: relative; width: 100%; background: var(--card); border-radius: 14px; padding: 10px 14px 14px;
+    /* 左右のふちに、半円の切り欠きを入れて、券らしく見せる */
+    -webkit-mask: radial-gradient(circle at 0 50%, transparent 10px, #000 10.5px) left / 51% 100% no-repeat,
+                  radial-gradient(circle at 100% 50%, transparent 10px, #000 10.5px) right / 51% 100% no-repeat;
+            mask: radial-gradient(circle at 0 50%, transparent 10px, #000 10.5px) left / 51% 100% no-repeat,
+                  radial-gradient(circle at 100% 50%, transparent 10px, #000 10.5px) right / 51% 100% no-repeat;
+  }
+  .ticket-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; font-size: 11px; font-weight: 800; letter-spacing: .08em; margin-bottom: 8px; color: var(--main); }
+  .ticket-head b { min-width: 0; font-family: var(--serif); font-size: 14px; line-height: 1.35; color: var(--ink); letter-spacing: .1em; word-break: keep-all; overflow-wrap: anywhere; }
+  .ticket-head span { flex: none; }
 
-  footer {
-    margin-top: 24px;
-    padding-top: 14px;
-    border-top: 1px solid var(--line);
-    font-size: 12px;
-    color: var(--muted);
+  /* 3×3 のマス。カードの上では、ページがスクロールしない */
+  .board {
+    position: relative; width: 100%; aspect-ratio: 1 / 1; margin: 0 auto;
+    display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr); gap: 6px;
+    touch-action: none;
   }
-  footer p { margin: 0 0 2px; }
+  .board.done { touch-action: pan-y; }
+  .cell {
+    position: relative; border-radius: 9px; overflow: hidden; background: var(--cell); min-width: 0; min-height: 0;
+    container-type: inline-size;
+    box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--ink) 14%, transparent);
+    transition: opacity .3s ease, transform .2s ease;
+  }
+  .face {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center; padding: 4px;
+    background: radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--accent) 16%, var(--cell)), var(--cell) 75%);
+  }
+  .face-label {
+    font-family: var(--serif); font-weight: 800; color: var(--accent); line-height: 1.1; letter-spacing: .02em;
+    font-size: 15px; font-size: min(20px, 19cqw); word-break: keep-all; overflow-wrap: anywhere;
+  }
+  .cell .cover { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; transition: filter .3s ease; }
+  .cell.locked .cover { filter: saturate(.55) brightness(.9); cursor: not-allowed; }
+  .cell.mine { box-shadow: 0 0 0 3px var(--main); z-index: 1; }
+  .cell.mine.revealed { box-shadow: 0 0 0 3px var(--accent); }
+  .cell.revealed .cover, .cell.opened .cover { opacity: 0; transition: opacity .45s ease; pointer-events: none; }
+  .cell.opened { opacity: .8; }
+  .cell.opened .face { animation: pop .38s cubic-bezier(.2,1.5,.4,1) both; }
+  .cell.mine.revealed.hit .face { animation: pop .5s cubic-bezier(.2,1.6,.4,1) both; }
+  @keyframes pop { 0% { transform: scale(.6); } 100% { transform: scale(1); } }
+  .cell.nudge { animation: nudge .4s ease; }
+  @keyframes nudge { 0%,100% { transform: none; } 30% { transform: scale(1.06); } 60% { transform: scale(.98); } }
+  .mine-tag {
+    position: absolute; left: 50%; bottom: 3px; transform: translateX(-50%); z-index: 2; pointer-events: none;
+    font-size: 10px; font-weight: 800; letter-spacing: .04em; white-space: nowrap;
+    color: var(--on-color); background: var(--accent); border-radius: 99px; padding: 1px 7px; opacity: 0;
+  }
+  .cell.mine.revealed .mine-tag { opacity: 1; transition: opacity .3s ease .2s; }
 
-  /* 横向きのスマホ・タブレット・PC：3列（2列だと1枚だけ余るので使わない） */
-  @media (min-width: 760px) {
-    .cards { grid-template-columns: repeat(3, 1fr); }
-    .body { padding: 12px 14px 16px; }
+  /* マスの上に重ねる案内（最初に指が触れたら薄くして消す） */
+  .guide {
+    position: absolute; left: 50%; top: 50%; z-index: 3; pointer-events: none;
+    transform: translate(-50%, -50%);
+    font-family: var(--serif); font-weight: 800; font-size: 15px; letter-spacing: .06em; white-space: nowrap;
+    color: var(--guide-ink); background: color-mix(in srgb, var(--guide) 84%, transparent); border-radius: 99px; padding: 8px 16px;
+    box-shadow: 0 3px 10px color-mix(in srgb, var(--shadow) 25%, transparent);
+    transition: opacity .35s ease;
   }
-  @media (min-width: 900px) {
-    .wrap { padding-top: 48px; }
-    header { margin-bottom: 28px; }
-    .cards { gap: 20px; }
-    .body { padding: 14px 18px 18px; }
+  .guide small { display: block; font-family: var(--sans); font-size: 11px; font-weight: 700; letter-spacing: 0; opacity: .85; text-align: center; }
+  .guide.off { opacity: 0; }
+
+  .meter-box { grid-area: meter; width: 100%; min-height: 40px; }
+  .meter-row { display: flex; justify-content: space-between; align-items: baseline; font-size: 12px; font-weight: 800; margin-bottom: 6px; }
+  .meter-row b { font-size: 15px; font-variant-numeric: tabular-nums; }
+  .meter-bar { position: relative; height: 12px; border-radius: 99px; background: color-mix(in srgb, var(--ink) 12%, transparent); }
+  .meter-clip { position: absolute; inset: 0; border-radius: 99px; overflow: hidden; }
+  #meterFill { height: 100%; width: 100%; background: var(--sub); transform-origin: left center; transform: scaleX(0); transition: transform .12s linear; }
+  /* 結果が出る位置の印 */
+  .meter-mark { position: absolute; top: -4px; bottom: -4px; width: 0; border-left: 2px solid var(--ink); }
+  .meter-mark::before {
+    content: ""; position: absolute; left: -6px; top: -5px;
+    border: 5px solid transparent; border-top: 6px solid var(--ink); border-bottom: 0;
   }
-  /* 背の低い画面（横向き）：飾りを薄く */
-  @media (max-height: 420px) {
-    .wrap { padding-top: 16px; }
-    header { margin-bottom: 14px; }
-    .band { height: 64px; }
+  .result-line { text-align: center; font-size: 14px; font-weight: 800; line-height: 1.4; color: var(--accent); word-break: keep-all; overflow-wrap: anywhere; }
+  .result-line span { display: inline-block; color: var(--on-color); background: var(--accent); border-radius: 4px; padding: 1px 8px; margin-right: 6px; }
+  .meter-box[hidden], .result-line[hidden] { display: none; }
+  .see-btn { margin-top: 12px; }
+  .ticket-wrap.big .ticket { box-shadow: inset 0 0 0 3px var(--accent); }
+  .ticket-wrap.big { animation: glow 1s ease-in-out 2; }
+  @keyframes glow { 0%,100% { transform: scale(1); } 40% { transform: scale(1.04) rotate(-1deg); } 70% { transform: scale(1.02) rotate(1deg); } }
+  .ticket-wrap.miss { animation: sway .6s ease-in-out 1; }
+  @keyframes sway { 0%,100% { transform: none; } 30% { transform: translateX(-6px); } 60% { transform: translateX(5px); } }
+
+  /* ---------- 結果画面 ---------- */
+  #resultScreen .inner { justify-content: center; gap: 12px; }
+  .res-head { width: 100%; text-align: center; }
+  .coupon-wrap { width: 100%; filter: drop-shadow(0 4px 0 color-mix(in srgb, var(--shadow) 12%, transparent)) drop-shadow(0 12px 18px color-mix(in srgb, var(--shadow) 14%, transparent)); }
+  .coupon {
+    width: 100%; background: var(--card); border-radius: 4px; text-align: center; padding: 18px 18px 16px;
+    /* 上と下のふちを、ぎざぎざに切った券の形にする */
+    -webkit-mask: conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) bottom / 16px 51% repeat-x,
+                  conic-gradient(from 135deg at top, #0000, #000 1deg 89deg, #0000 90deg) top / 16px 51% repeat-x;
+            mask: conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) bottom / 16px 51% repeat-x,
+                  conic-gradient(from 135deg at top, #0000, #000 1deg 89deg, #0000 90deg) top / 16px 51% repeat-x;
   }
-  @media (prefers-reduced-motion: no-preference) {
-    .play { transition: filter .15s; }
+  .coupon .shop { font-size: 12px; margin-bottom: 10px; }
+  .res-label { display: inline-block; font-size: 14px; font-weight: 800; letter-spacing: .14em; color: var(--on-color); background: var(--accent); border-radius: 4px; padding: 3px 14px; }
+  .res-name { font-family: var(--serif); font-weight: 800; font-size: clamp(24px, 7.6vw, 30px); line-height: 1.25; color: var(--accent); margin: 8px 0 4px; word-break: keep-all; overflow-wrap: anywhere; }
+  .res-note { font-size: 13px; font-weight: 700; opacity: .8; word-break: keep-all; overflow-wrap: anywhere; }
+  .perf { border: 0; border-top: 2px dashed color-mix(in srgb, var(--ink) 30%, transparent); margin: 14px -4px 12px; }
+  .staff { font-size: 16px; font-weight: 800; color: var(--main); }
+  .staff[hidden] { display: none; }
+  .meta { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+  .meta div { background: color-mix(in srgb, var(--ink) 6%, var(--card)); border-radius: 6px; padding: 6px 4px; }
+  .meta dt { font-size: 11px; font-weight: 800; opacity: .65; }
+  .meta dd { font-size: 15px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: .02em; }
+  .meta dd.code { font-family: ui-monospace, "Consolas", "Menlo", monospace; font-size: 18px; letter-spacing: .14em; color: var(--ink); }
+  .res-foot { width: 100%; text-align: center; }
+  .res-msg { font-size: 13px; font-weight: 800; line-height: 1.5; margin-bottom: 8px; }
+  .res-msg[hidden], .btn[hidden] { display: none; }
+  .res-head p { font-family: var(--serif); font-weight: 800; font-size: 22px; letter-spacing: .08em; }
+  .screen.show .coupon-wrap { animation: rise .5s cubic-bezier(.2,1.3,.4,1) both; }
+  @keyframes rise { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: none; } }
+
+  #fx { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 25; pointer-events: none; }
+  #credit {
+    position: fixed; right: 10px; bottom: calc(env(safe-area-inset-bottom, 0px) + 6px); z-index: 40;
+    font-size: 10px; font-weight: 700; letter-spacing: .05em; color: color-mix(in srgb, var(--ink) 55%, transparent); pointer-events: none;
+  }
+
+  /* 縦が短い画面（iPhone SE の Safari など） */
+  @media (max-height: 620px) {
+    .screen { padding-top: calc(env(safe-area-inset-top, 0px) + var(--awning) + 20px); padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 22px); }
+    h1 { font-size: clamp(28px, 9vw, 34px); margin-top: 4px; }
+    .lead { font-size: 13px; margin-top: 4px; }
+    .hero { height: 78px; }
+    .hero .hero-art { width: 66px; }
+    .prize-list li { padding: 5px 2px; font-size: 13px; }
+    .btn { padding: 13px 10px; font-size: 19px; }
+    .small-note { margin-top: 7px; }
+    #scratchScreen .inner { row-gap: 9px; }
+    .step-title { font-size: 21px; }
+    .coupon { padding: 14px 16px 12px; }
+    .coupon .shop { margin-bottom: 6px; }
+    .res-name { margin: 6px 0 2px; }
+    .perf { margin: 10px -4px 8px; }
+    .meta { margin-top: 8px; }
+    .res-head p { font-size: 19px; }
+    #resultScreen .inner { gap: 9px; }
+  }
+
+  /* 横向きで、縦が短い画面（スマホを横にしたとき）。左右に並べて、縦に収める */
+  @media (orientation: landscape) and (max-height: 520px) {
+    :root { --awning: 16px; }
+    .awning::after { height: 9px; background-size: 56px 10px, 56px 10px; }
+    .screen { padding-top: calc(env(safe-area-inset-top, 0px) + var(--awning) + 18px); padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 14px); }
+    .inner { max-width: 760px; }
+
+    #titleScreen .inner {
+      display: grid; grid-template-columns: 1fr 1fr; grid-template-areas: "top list" "hero bottom";
+      column-gap: 28px; row-gap: 10px; align-content: center; align-items: center; justify-items: center;
+    }
+    .title-top { grid-area: top; }
+    .hero { grid-area: hero; height: 74px; }
+    .hero .hero-art { width: 62px; }
+    .prize-list { grid-area: list; align-self: end; }
+    .title-bottom { grid-area: bottom; align-self: start; }
+    h1 { font-size: clamp(22px, 4.4vw, 32px); }
+
+    #scratchScreen .inner {
+      grid-template-columns: auto minmax(170px, 300px); grid-template-rows: 1fr 1fr;
+      grid-template-areas: "ticket title" "ticket meter";
+      column-gap: 26px; row-gap: 14px; justify-content: center;
+    }
+    .scratch-title { align-self: end; }
+    .meter-box { align-self: start; }
+    .ticket-wrap { width: auto; }
+    .ticket { padding: 8px 12px 10px; }
+    .ticket-head { display: none; }
+    /* マスの大きさを、画面の高さに合わせる */
+    .board { width: calc(100vh - 82px); width: calc(100dvh - 82px); min-width: 200px; max-width: 420px; }
+    .step-title { font-size: 21px; }
+
+    #resultScreen .inner {
+      display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 300px); grid-template-areas: "coupon head" "coupon foot";
+      column-gap: 26px; row-gap: 12px; align-content: center; justify-content: center;
+    }
+    .coupon-wrap { grid-area: coupon; }
+    .res-head { grid-area: head; align-self: end; }
+    .res-foot { grid-area: foot; align-self: start; }
+    .coupon { padding: 13px 16px 11px; }
+    .coupon .shop { margin-bottom: 5px; }
+    .res-name { font-size: 24px; margin: 5px 0 2px; }
+    .perf { margin: 8px -4px 7px; }
+    .meta { margin-top: 7px; }
+  }
+  /* 横向きで、幅も狭い画面（568x320 など）：右の列を細くして、券の列を広げる（景品名が細く折れないように） */
+  @media (orientation: landscape) and (max-height: 520px) and (max-width: 700px) {
+    #resultScreen .inner { grid-template-columns: minmax(0, 1fr) minmax(150px, 200px); column-gap: 18px; }
+    .res-name { font-size: 22px; line-height: 1.2; }
+    .staff { font-size: 14px; }
+    .meta { gap: 6px; }
+    .meta div { padding: 3px 4px; }
+    .meta dd { font-size: 14px; }
+    .meta dd.code { font-size: 16px; }
+  }
+
+  /* 動きを減らす設定の人向け */
+  @media (prefers-reduced-motion: reduce) {
+    .hero .bob, .ticket-wrap.big, .ticket-wrap.miss, .screen.show .coupon-wrap,
+    .cell.opened .face, .cell.mine.revealed.hit .face, .cell.nudge { animation: none !important; }
+    .screen, .screen.show { transition: none; }
+    .cell.revealed .cover, .cell.opened .cover { transition: opacity .2s linear; }
   }
 </style>
 </head>
 <body>
-<div class="wrap">
-  <header>
-    <h1>Ryvona のミニゲーム見本</h1>
-    <p class="lead">スマホで遊べる、お店の販促用ミニゲームの見本です。店名と景品はすべて架空です。</p>
-  </header>
+  <div class="awning" aria-hidden="true"></div>
 
-  <ul class="cards">
-    <li class="card c1">
-      <span class="band" aria-hidden="true">
-        <svg viewBox="0 0 400 92" preserveAspectRatio="xMidYMid slice">
-          <defs>
-            <linearGradient id="g1" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0" stop-color="#2b2a6b"/>
-              <stop offset="1" stop-color="#7a5cc7"/>
-            </linearGradient>
-          </defs>
-          <rect width="400" height="92" fill="url(#g1)"/>
-          <g fill="#ffc400"><path d="M200 22l5.9 12 13.1 1.9-9.5 9.3 2.2 13.1L200 52.1 188.3 58.3l2.2-13.1-9.5-9.3 13.1-1.9z"/></g>
-          <g fill="#ff9fcb"><path d="M120 50l3.5 7.1 7.8 1.1-5.6 5.5 1.3 7.8-7-3.7-7 3.7 1.3-7.8-5.6-5.5 7.8-1.1z"/></g>
-          <g fill="#8ecbff"><path d="M280 44l3.5 7.1 7.8 1.1-5.6 5.5 1.3 7.8-7-3.7-7 3.7 1.3-7.8-5.6-5.5 7.8-1.1z"/></g>
-          <g fill="#7ee0c3"><path d="M60 20l2.6 5.3 5.8.8-4.2 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z"/></g>
-          <g fill="#c9a7ff"><path d="M345 18l2.6 5.3 5.8.8-4.2 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z"/></g>
-          <g fill="#fff" opacity=".7"><circle cx="30" cy="62" r="1.5"/><circle cx="90" cy="30" r="1.2"/><circle cx="160" cy="16" r="1.4"/><circle cx="240" cy="74" r="1.2"/><circle cx="320" cy="76" r="1.5"/><circle cx="375" cy="56" r="1.2"/></g>
-        </svg>
-      </span>
-      <div class="body">
-        <p class="shop">ほしのうたカフェ（架空）</p>
-        <h2>星あつめチャレンジ</h2>
-        <dl>
-          <dt>遊び方</dt>
-          <dd>30秒のあいだ、出てくる星をタップして点数を集めます。</dd>
-          <dt>向いている使い方</dt>
-          <dd>店頭のイベントや、待ち時間の楽しみに。</dd>
-        </dl>
-        <a class="play" href="sample1/">遊んでみる <span aria-hidden="true">→</span></a>
+  <!-- タイトル画面 -->
+  <section id="titleScreen" class="screen" aria-label="タイトル画面">
+    <div class="inner">
+      <div class="title-top">
+        <p class="shop" data-config="shopName"></p>
+        <h1 data-config="eventName"></h1>
+        <p class="lead" id="lead"></p>
+        <p class="sample-notice" data-notice></p>
       </div>
-    </li>
-
-    <li class="card c2">
-      <span class="band" aria-hidden="true">
-        <svg viewBox="0 0 400 92" preserveAspectRatio="xMidYMid slice">
-          <rect width="400" height="92" fill="#f6eedf"/>
-          <g fill="#b9502b">
-            <rect x="0" y="0" width="400" height="22"/>
-          </g>
-          <g fill="#fffaf1">
-            <rect x="25" y="0" width="25" height="22"/><rect x="75" y="0" width="25" height="22"/><rect x="125" y="0" width="25" height="22"/><rect x="175" y="0" width="25" height="22"/><rect x="225" y="0" width="25" height="22"/><rect x="275" y="0" width="25" height="22"/><rect x="325" y="0" width="25" height="22"/><rect x="375" y="0" width="25" height="22"/>
-          </g>
-          <path d="M0 22 q12.5 12 25 0 q12.5 12 25 0 q12.5 12 25 0 q12.5 12 25 0 q12.5 12 25 0 q12.5 12 25 0 q12.5 12 25 0 q12.5 12 25 0 q12.5 12 25 0 q12.5 12 25 0 q12.5 12 25 0 q12.5 12 25 0 q12.5 12 25 0 q12.5 12 25 0 q12.5 12 25 0 q12.5 12 25 0z" fill="#b9502b"/>
-          <g transform="translate(200 56)">
-            <ellipse cx="0" cy="0" rx="46" ry="18" fill="#d29a52"/>
-            <ellipse cx="0" cy="-3" rx="42" ry="13" fill="#e2b06a"/>
-            <path d="M-24 -8 q6 8 12 0 M-6 -9 q6 8 12 0 M12 -8 q6 8 12 0" stroke="#a4692e" stroke-width="2.4" fill="none" stroke-linecap="round"/>
-          </g>
-          <g fill="#5f7d3a" opacity=".55"><circle cx="90" cy="66" r="4"/><circle cx="310" cy="66" r="4"/></g>
-        </svg>
-      </span>
-      <div class="body">
-        <p class="shop">パン工房 むぎとこね（架空）</p>
-        <h2>焼きたてスクラッチ</h2>
-        <dl>
-          <dt>遊び方</dt>
-          <dd>9マスから1つ選び、指でこすって景品を確かめます。</dd>
-          <dt>向いている使い方</dt>
-          <dd>来店の記念や、お会計のときのくじに。</dd>
-        </dl>
-        <a class="play" href="sample2/">遊んでみる <span aria-hidden="true">→</span></a>
+      <div class="hero" aria-hidden="true">
+        <div class="mini"><div class="mini-face"><i></i><i></i><i></i><i></i><i class="open" id="heroMark"></i><i></i><i></i><i></i><i></i></div></div>
+        <div class="hero-art bob" id="heroArt"></div>
       </div>
-    </li>
-
-    <li class="card c3">
-      <span class="band" aria-hidden="true">
-        <svg viewBox="0 0 400 92" preserveAspectRatio="xMidYMid slice">
-          <rect width="400" height="92" fill="#e6ede3"/>
-          <g fill="#2f5d50" opacity=".22">
-            <path d="M40 80 q-8 -28 18 -44 q6 30 -18 44z"/>
-            <path d="M350 82 q-6 -30 22 -42 q2 30 -22 42z"/>
-            <path d="M92 24 q14 -12 30 -4 q-14 14 -30 4z"/>
-            <path d="M290 26 q12 -14 30 -8 q-12 16 -30 8z"/>
-          </g>
-          <g transform="translate(200 54)">
-            <path d="M-30 -14 h60 v6 a30 30 0 0 1 -60 0z" fill="#f7f8f2" stroke="#2f5d50" stroke-width="2.5"/>
-            <ellipse cx="0" cy="-12" rx="28" ry="4" fill="#b9d58a"/>
-            <path d="M30 -8 q14 0 12 10 q-2 8 -14 6" fill="none" stroke="#2f5d50" stroke-width="2.5"/>
-            <path d="M-8 -22 q-4 -6 0 -12 M6 -22 q-4 -6 0 -12" fill="none" stroke="#c99a3b" stroke-width="2" stroke-linecap="round"/>
-            <path d="M-40 26 h80" stroke="#2f5d50" stroke-width="2.5" stroke-linecap="round"/>
-          </g>
-        </svg>
-      </span>
-      <div class="body">
-        <p class="shop">ハーブティーの店 そよぎ（架空）</p>
-        <h2>今日の一杯診断</h2>
-        <dl>
-          <dt>遊び方</dt>
-          <dd>6つの質問に答えると、今の気分に合う一杯をおすすめします。</dd>
-          <dt>向いている使い方</dt>
-          <dd>商品選びの案内や、おすすめの紹介に。</dd>
-        </dl>
-        <a class="play" href="sample3/">遊んでみる <span aria-hidden="true">→</span></a>
+      <ul class="prize-list" id="prizeList" aria-label="景品"></ul>
+      <div class="title-bottom">
+        <button class="btn" id="startBtn" type="button"></button>
+        <p class="small-note" id="titleNote"></p>
       </div>
-    </li>
-  </ul>
+    </div>
+  </section>
 
-  <footer>
-    <p>※ 掲載している店名・景品はすべて架空の見本です</p>
-    <p>Sample by Ryvona</p>
-  </footer>
-</div>
+  <!-- けずる画面 -->
+  <section id="scratchScreen" class="screen" aria-label="カードをけずる画面">
+    <div class="inner">
+      <div class="scratch-title">
+        <p class="step-title"><span id="stepText"></span><small id="scratchHint"></small></p>
+      </div>
+      <div class="ticket-wrap" id="ticketWrap">
+        <div class="ticket">
+          <div class="ticket-head"><b data-config="shopName"></b><span id="ticketBrand"></span></div>
+          <div class="board" id="board" aria-label="9つのマス">
+            <p class="guide" id="guide" aria-hidden="true"><span id="guideText"></span><small id="guideSub"></small></p>
+          </div>
+        </div>
+      </div>
+      <div class="meter-box">
+        <div class="meter" id="meter" aria-hidden="true">
+          <div class="meter-row"><span id="meterLabel"></span><b id="meterText">0%</b></div>
+          <div class="meter-bar"><div class="meter-clip"><div id="meterFill"></div></div><span class="meter-mark" id="meterMark"></span></div>
+        </div>
+        <p class="result-line" id="resultLine" hidden></p>
+        <button class="btn see-btn" id="seeBtn" type="button" hidden></button>
+      </div>
+    </div>
+  </section>
+
+  <!-- 結果画面 -->
+  <section id="resultScreen" class="screen" aria-label="結果画面" aria-live="polite">
+    <div class="inner">
+      <div class="res-head"><p id="resHead"></p></div>
+      <div class="coupon-wrap">
+        <div class="coupon">
+          <p class="shop" data-config="shopName"></p>
+          <span class="res-label" id="resLabel"></span>
+          <p class="res-name" id="resName"></p>
+          <p class="res-note" id="resNote"></p>
+          <p class="sample-notice" data-notice></p>
+          <hr class="perf">
+          <p class="staff" id="resStaff"></p>
+          <dl class="meta">
+            <div><dt id="metaTime"></dt><dd id="resTime"></dd></div>
+            <div><dt id="metaCode"></dt><dd class="code" id="resCode"></dd></div>
+          </dl>
+        </div>
+      </div>
+      <div class="res-foot">
+        <p class="res-msg" id="resMsg" hidden></p>
+        <button class="btn" id="retryBtn" type="button"></button>
+      </div>
+    </div>
+  </section>
+
+  <canvas id="fx" aria-hidden="true"></canvas>
+  <div id="credit"></div>
+
+<script id="game-main">
+(function () {
+  "use strict";
+  var C = CONFIG, L = ScratchLogic;
+  var reduceMotion = false;
+  try { reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (e) {}
+  var $ = function (id) { return document.getElementById(id); };
+
+  // 画面の文（texts に無い物は、ここに書いた文を使う）
+  var T = (C.texts && typeof C.texts === "object") ? C.texts : {};
+  function txt(k, def) { return typeof T[k] === "string" ? T[k] : def; }
+  // {pct} などを置きかえる（「$&」などが入っていても、そのまま入るように関数で渡す）
+  function fill(s, map) {
+    return String(s).replace(/\{(\w+)\}/g, function (m, k) {
+      return Object.prototype.hasOwnProperty.call(map, k) ? String(map[k]) : m;
+    });
+  }
+
+  /* ---------- 設定を画面に反映 ---------- */
+  var col = C.colors || {};
+  var rootStyle = document.documentElement.style;
+  [["--main", col.main], ["--sub", col.sub], ["--paper", col.paper], ["--stripe", col.stripe],
+   ["--ink", col.ink], ["--crust", col.crust], ["--crust-dark", col.crustDark],
+   ["--card", col.card], ["--cell", col.cell], ["--shadow", col.shadow], ["--guide", col.guide],
+   ["--guide-ink", col.guideInk], ["--on-color", col.onColor]].forEach(function (p) {
+    if (p[1]) rootStyle.setProperty(p[0], p[1]);
+  });
+  document.title = C.eventName + "｜" + C.shopName;
+  var themeMeta = document.querySelector('meta[name="theme-color"]');
+  if (themeMeta && col.main) themeMeta.setAttribute("content", col.main);
+  Array.prototype.forEach.call(document.querySelectorAll("[data-config]"), function (el) {
+    el.textContent = C[el.getAttribute("data-config")];
+  });
+  $("credit").textContent = C.credit;
+  [["lead", "lead", "9つのマスから1つ選んで、指でこすってね"], ["heroMark", "heroMark", "当"], ["startBtn", "start", "カードをけずる"],
+   ["ticketBrand", "ticketBrand", "SCRATCH"], ["guideText", "guide", "ここを こすってね"], ["guideSub", "guideSub", "好きなマスを1つ"],
+   ["meterLabel", "meterLabel", "えらんだマスの けずった量"], ["seeBtn", "seeResult", "結果を見る"],
+   ["metaTime", "metaTime", "日時"], ["metaCode", "metaCode", "確認番号"], ["retryBtn", "retry", "もう一度ひく"]].forEach(function (a) {
+    $(a[0]).textContent = txt(a[1], a[2]);
+  });
+  // 見本であることの表示（CONFIG.sampleNotice が空なら出さない）
+  var notice = typeof C.sampleNotice === "string" ? C.sampleNotice.trim() : "";
+  Array.prototype.forEach.call(document.querySelectorAll("[data-notice]"), function (el) {
+    el.textContent = notice;
+    el.hidden = !notice;
+  });
+  var revealPct = L.toRevealPercent(C.revealPercent); // 1〜100 の整数
+  var prizes = Array.isArray(C.prizes) ? C.prizes : [];
+  var miss = C.miss || {};
+  var missPossible = L.buildTable(prizes, miss).some(function (t) { return t.index === -1; });
+
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+
+  /* ---------- 保存（使えない環境でも例外を出さない） ---------- */
+  var store = {
+    get: function () { try { return window.localStorage.getItem(C.storageKey); } catch (e) { return null; } },
+    set: function (v) { try { window.localStorage.setItem(C.storageKey, v); return true; } catch (e) { return false; } }
+  };
+  // 保存が本当に使えるかを、書いて読んで確かめる（使えないときは、1日1回の制限は効かない）
+  function storageWorks() {
+    try {
+      var k = C.storageKey + "-check";
+      window.localStorage.setItem(k, "1");
+      var ok = window.localStorage.getItem(k) === "1";
+      window.localStorage.removeItem(k);
+      return ok;
+    } catch (e) { return false; }
+  }
+  // 実際に効いている「1日1回」。設定が ON でも、保存が使えなければ OFF と同じに扱い、案内も出さない
+  var limitOn = !!C.dailyLimit && storageWorks();
+
+  // タイトル画面の景品の一覧（出る確率が 0 の景品は出さない）
+  var listHtml = "";
+  prizes.forEach(function (p) {
+    if (!(Number(p.rate) > 0)) return;
+    listHtml += '<li style="--c:' + esc(p.color || col.main) + '"><span class="tag">' + esc(p.label || "当たり") + '</span><span class="nm">' + esc(p.name) + "</span></li>";
+  });
+  $("prizeList").innerHTML = listHtml;
+  function updateTitleNote() {
+    var notes = [];
+    if (limitOn) notes.push(txt("noteLimit", "参加は1日1回まで"));
+    if (missPossible) notes.push(txt("noteMiss", "はずれもあります"));
+    $("titleNote").textContent = notes.join(txt("noteJoin", "／"));
+  }
+  updateTitleNote();
+  $("scratchHint").textContent = fill(txt("hint", "えらんだマスを{pct}%けずると、結果が出ます"), { pct: revealPct });
+  $("meterMark").style.left = revealPct + "%";
+  $("resStaff").textContent = C.prizeNote;
+
+  // タイトル画面の絵（CONFIG.art で選ぶ。外部の画像は使わず、ここで描く）
+  var ART = {
+    // 山形の食パン（顔は描かない）
+    bread: function () {
+      return '<svg viewBox="0 0 120 92" aria-hidden="true">' +
+        '<path d="M14 86 V48 C6 44 6 22 26 18 C34 8 50 6 60 14 C70 6 86 8 94 18 C114 22 114 44 106 48 V86 Z" fill="#fbe7c4" stroke="' + esc(col.crustDark || "#a4692e") + '" stroke-width="6" stroke-linejoin="round"/>' +
+        '<path d="M14 48 C6 44 6 22 26 18 C34 8 50 6 60 14 C70 6 86 8 94 18 C114 22 114 44 106 48 C90 40 30 40 14 48 Z" fill="' + esc(col.crust || "#d29a52") + '"/>' +
+        '<path d="M36 26 Q42 22 48 25 M72 25 Q78 22 84 26" stroke="#fff" stroke-width="4" stroke-linecap="round" fill="none" opacity=".55"/>' +
+        "</svg>";
+    },
+    // プレゼントの箱（どの業種でも使える絵。色はメインの色と、テントの明るい色）
+    gift: function () {
+      var box = esc(col.main || "#b9502b"), rib = esc(col.stripe || "#fffaf1"), line = esc(col.shadow || "#4a2e1c");
+      var st = '" stroke="' + line + '" stroke-opacity=".45" stroke-width="3" stroke-linejoin="round"';
+      return '<svg viewBox="0 0 120 92" aria-hidden="true">' +
+        '<rect x="20" y="42" width="80" height="46" rx="5" fill="' + box + st + '/>' +
+        '<rect x="22" y="44" width="76" height="9" fill="#000" opacity=".12"/>' +
+        '<rect x="53" y="42" width="14" height="46" fill="' + rib + st + '/>' +
+        '<rect x="14" y="28" width="92" height="17" rx="4" fill="' + box + st + '/>' +
+        '<rect x="53" y="28" width="14" height="17" fill="' + rib + st + '/>' +
+        '<path d="M60 27 C 48 8, 26 12, 33 24 C 37 30, 50 29, 60 27 Z" fill="' + rib + st + '/>' +
+        '<path d="M60 27 C 72 8, 94 12, 87 24 C 83 30, 70 29, 60 27 Z" fill="' + rib + st + '/>' +
+        '<circle cx="60" cy="27" r="6" fill="' + rib + st + '/>' +
+        '<path d="M24 33 H 44" stroke="#fff" stroke-width="3" stroke-linecap="round" opacity=".45"/>' +
+        "</svg>";
+    }
+  };
+  var heroArt = $("heroArt");
+  if (typeof C.art === "string" && Object.prototype.hasOwnProperty.call(ART, C.art)) {
+    heroArt.innerHTML = ART[C.art]();
+  } else {
+    heroArt.hidden = true; // "none" やほかの値のときは絵を出さず、小さなカードを真ん中に置く
+    heroArt.parentNode.classList.add("no-art");
+  }
+
+  /* ---------- 乱数（使えるなら暗号用の乱数を使う） ---------- */
+  function rand() {
+    try {
+      var a = new Uint32Array(1);
+      window.crypto.getRandomValues(a);
+      return a[0] / 4294967296;
+    } catch (e) { return Math.random(); }
+  }
+
+  /* ---------- 画面の切り替え ---------- */
+  // title → scratch（マスを選ぶ前は chosen が -1）→ reveal（残りのマスを開く）→ result
+  var phase = "title";
+  function show(id) {
+    ["titleScreen", "scratchScreen", "resultScreen"].forEach(function (s) {
+      var on = s === id;
+      $(s).classList.toggle("show", on);
+      // 隠れる画面は、すぐにキーボード操作や読み上げの対象からも外す
+      if (on) $(s).removeAttribute("inert"); else $(s).setAttribute("inert", "");
+      if (on) $(s).scrollTop = 0;
+    });
+  }
+
+  // 景品の番号から、表示する中身を作る（はずれは -1）
+  function describe(index) {
+    var p = prizes[index];
+    if (index >= 0 && p) {
+      return { miss: false, label: p.label || "当たり", name: String(p.name || ""), note: p.note || "", color: p.color || col.main, effect: p.effect || "small" };
+    }
+    return { miss: true, label: miss.label || "はずれ", name: miss.name || "はずれ", note: miss.message || "", color: col.miss || "#8a7a68", effect: "miss" };
+  }
+
+  /* ---------- 9つのマス ---------- */
+  var N = 9;
+  var board = $("board");
+  var cells = [];
+  for (var ci = 0; ci < N; ci++) {
+    var el = document.createElement("div");
+    el.className = "cell";
+    el.setAttribute("data-i", String(ci));
+    el.innerHTML = '<div class="face"><span class="face-label"></span></div><canvas class="cover" aria-label="マス' + (ci + 1) + '"></canvas><span class="mine-tag">' + esc(txt("mineTag", "えらんだマス")) + '</span>';
+    board.appendChild(el);
+    var cvs = el.querySelector("canvas");
+    cells.push({ el: el, label: el.querySelector(".face-label"), cv: cvs, cx: cvs.getContext("2d"), w: 0, h: 0 });
+  }
+
+  var GRID = 16;                       // 選んだマスの、けずった量を数える区画（16 x 16）
+  var grid = new Uint8Array(GRID * GRID);
+  var brush = 14, chosen = -1, current = null;
+  var strokes = {};                    // 指（ポインター）ごとの、前の位置
+  var timers = [];
+
+  function setupCell(c, i) {
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    c.w = c.cv.offsetWidth || 80; c.h = c.cv.offsetHeight || 80;
+    c.cv.width = Math.round(c.w * dpr); c.cv.height = Math.round(c.h * dpr);
+    c.cx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    paintCover(c, i);
+  }
+
+  function paintCover(c, i) {
+    var cx = c.cx, w = c.w, h = c.h;
+    cx.globalCompositeOperation = "source-over";
+    var g = cx.createLinearGradient(0, 0, w, h);
+    g.addColorStop(0, col.crust || "#d29a52"); g.addColorStop(1, col.crustDark || "#a4692e");
+    cx.fillStyle = g; cx.fillRect(0, 0, w, h);
+    // 小麦粉の粒のような点（マスごとに決まった並び）
+    var seed = 7 + i * 101;
+    function r01() { seed = (seed * 16807) % 2147483647; return seed / 2147483647; }
+    for (var k = 0; k < 16; k++) {
+      cx.fillStyle = k % 3 ? "rgba(255,248,230,.3)" : "rgba(90,50,20,.18)";
+      cx.beginPath(); cx.arc(r01() * w, r01() * h, 0.8 + r01() * 1.6, 0, Math.PI * 2); cx.fill();
+    }
+    // パンのクープ（切れ目）のような線（パンの絵のときだけ）
+    if (C.art === "bread") {
+    cx.strokeStyle = "rgba(255,240,210,.38)"; cx.lineWidth = Math.max(3, w * 0.06); cx.lineCap = "round";
+    cx.beginPath(); cx.moveTo(w * 0.22, h * 0.3); cx.quadraticCurveTo(w * 0.5, h * 0.16, w * 0.78, h * 0.32); cx.stroke();
+    }
+    // マスの番号（どのマスかわかるように、小さく）
+    cx.font = "800 " + Math.round(Math.max(11, w * 0.16)) + 'px "Hiragino Mincho ProN", "Yu Mincho", "YuMincho", serif';
+    cx.textAlign = "center"; cx.textBaseline = "middle";
+    cx.fillStyle = "rgba(255,250,241,.6)";
+    cx.fillText(String(i + 1), w / 2, h * 0.64);
+  }
+
+  function setupBoard() {
+    clearTimers();
+    chosen = -1; current = null; strokes = {};
+    grid = new Uint8Array(GRID * GRID);
+    board.classList.remove("done");
+    cells.forEach(function (c, i) {
+      c.el.className = "cell";
+      c.el.style.removeProperty("--accent");
+      c.label.textContent = "";
+      setupCell(c, i);
+    });
+    brush = Math.max(11, Math.min(24, (cells[0].w || 80) * 0.19));
+    $("guide").classList.remove("off");
+    $("stepText").textContent = txt("stepChoose", "マスを1つ えらんでね");
+    $("scratchHint").hidden = false;
+    $("meter").hidden = false;
+    $("resultLine").hidden = true;
+    $("seeBtn").hidden = true;
+    $("seeBtn").disabled = false;
+    $("ticketWrap").className = "ticket-wrap";
+    updateMeter(0);
+  }
+
+  function updateMeter(pct) {
+    $("meterFill").style.transform = "scaleX(" + (pct / 100).toFixed(3) + ")";
+    $("meterText").textContent = pct + "%";
+  }
+
+  // マスを選ぶ。ここで、選んだマスと残り8マスの中身を、同じ確率で別々に決める
+  function choose(i) {
+    chosen = i;
+    var now = new Date();
+    var deal = L.dealCells(rand, N, prizes, miss);
+    var d = describe(deal[i]);
+    current = {
+      v: 2, day: L.dayKey(now), at: now.getTime(), code: L.makeCode(rand, 6),
+      miss: d.miss, label: d.label, name: d.name, note: d.note, color: d.color, effect: d.effect
+    };
+    // 選んだ時点で保存する（途中で再読み込みしても、引き直しにならないように）
+    if (limitOn && !store.set(JSON.stringify(current))) { limitOn = false; updateTitleNote(); }
+    cells.forEach(function (c, j) {
+      var dj = describe(deal[j]);
+      c.el.style.setProperty("--accent", dj.color);
+      c.label.textContent = dj.label;
+      c.el.classList.add(j === i ? "mine" : "locked");
+    });
+    $("guide").classList.add("off");
+    $("stepText").textContent = txt("stepScratch", "そのマスを こすってね");
+  }
+
+  function nudgeMine() {
+    var el = cells[chosen].el;
+    el.classList.remove("nudge"); void el.offsetWidth; el.classList.add("nudge");
+  }
+
+  function toLocal(c, e) {
+    var rect = c.cv.getBoundingClientRect();
+    return {
+      x: (e.clientX - rect.left) * (c.w / (rect.width || 1)),
+      y: (e.clientY - rect.top) * (c.h / (rect.height || 1)),
+      sx: e.clientX, sy: e.clientY
+    };
+  }
+
+  function scratch(a, b) {
+    var c = cells[chosen], cx = c.cx;
+    cx.globalCompositeOperation = "destination-out";
+    cx.strokeStyle = "#000"; // 消す強さは色の濃さで決まるので、不透明な色で完全に消す
+    cx.lineCap = "round"; cx.lineJoin = "round"; cx.lineWidth = brush * 2;
+    cx.beginPath(); cx.moveTo(a.x, a.y); cx.lineTo(b.x + 0.01, b.y); cx.stroke();
+    cx.globalCompositeOperation = "source-over";
+    L.markSegment(grid, GRID, GRID, c.w, c.h, a.x, a.y, b.x, b.y, brush);
+    crumbs(b.sx, b.sy);
+    // 表示の数字と、結果が出るかの判定に、同じ値を使う（表示が50%なのに出ない、をなくす）
+    var pct = Math.round(L.coverage(grid) * 100);
+    updateMeter(pct);
+    if (pct >= revealPct) reveal();
+  }
+
+  function cellIndexOf(target) {
+    var el = target && target.closest ? target.closest(".cell") : null;
+    return el ? Number(el.getAttribute("data-i")) : -1;
+  }
+
+  board.addEventListener("pointerdown", function (e) {
+    if (phase !== "scratch") return;
+    var i = cellIndexOf(e.target);
+    if (i < 0) return;
+    e.preventDefault();
+    if (chosen < 0) choose(i);
+    if (i !== chosen) { nudgeMine(); return; } // ほかのマスは、触っても削れない
+    var c = cells[chosen];
+    try { c.cv.setPointerCapture(e.pointerId); } catch (err) {}
+    var p = toLocal(c, e);
+    strokes[e.pointerId] = p;
+    scratch(p, p);
+  }, { passive: false });
+  board.addEventListener("pointermove", function (e) {
+    var prev = strokes[e.pointerId];
+    if (!prev || phase !== "scratch" || chosen < 0) return;
+    e.preventDefault();
+    var p = toLocal(cells[chosen], e);
+    strokes[e.pointerId] = p;
+    scratch(prev, p);
+  }, { passive: false });
+  function endStroke(e) { delete strokes[e.pointerId]; }
+  board.addEventListener("pointerup", endStroke);
+  board.addEventListener("pointercancel", endStroke);
+  board.addEventListener("lostpointercapture", endStroke);
+  // こすっている間は、ページがスクロールしないようにする（touch-action に対応していない古い端末向け）
+  board.addEventListener("touchmove", function (e) { if (phase === "scratch") e.preventDefault(); }, { passive: false });
+
+  /* ---------- 流れ ---------- */
+  function startDraw() {
+    clearFx(); // 前の回の紙ふぶきやパンくずを消す
+    if (limitOn) {
+      var saved = L.parseRecord(store.get(), L.dayKey(new Date()));
+      if (saved) { showResult(saved, true); return; }
+    }
+    phase = "scratch";
+    show("scratchScreen");
+    setupBoard();
+  }
+
+  function later(fn, ms) { timers.push(setTimeout(fn, ms)); }
+  function clearTimers() { timers.forEach(clearTimeout); timers = []; }
+
+  // 結果が出たあと、残り8マスを開くまでの間と、開く間隔（ミリ秒）
+  var PAUSE = { big: 1300, mid: 1000, small: 850, miss: 750 };
+  var STEP = 220;
+  var SEE_DELAY = 500; // 最後のマスを開き始めてから「結果を見る」を出すまで（開く動きが終わるのを待つ）
+  var SEE_LOCK = 600;  // 「結果を見る」が出た直後に押せない間
+
+  function reveal() {
+    if (phase !== "scratch") return;
+    phase = "reveal";
+    strokes = {};
+    board.classList.add("done");
+    var mine = cells[chosen];
+    mine.el.classList.add("revealed");
+    if (!current.miss) mine.el.classList.add("hit");
+    $("stepText").textContent = current.miss ? txt("stepMiss", "ざんねん…") : fill(txt("stepHit", "{label}！"), { label: current.label });
+    $("scratchHint").hidden = true;
+    $("meter").hidden = true;
+    var line = $("resultLine");
+    line.style.setProperty("--accent", current.color);
+    line.innerHTML = "<span>" + esc(current.label) + "</span>" + esc(current.name);
+    line.hidden = false;
+    var eff = current.effect;
+    if (!reduceMotion) {
+      if (eff === "big") $("ticketWrap").classList.add("big");
+      if (eff === "miss") $("ticketWrap").classList.add("miss");
+    }
+    celebrate(eff, current.color, mine.el.getBoundingClientRect());
+
+    // 残り8マスを、番号の順に1つずつ開く（動きを減らす設定では、まとめて開く）
+    var rest = [];
+    for (var i = 0; i < N; i++) if (i !== chosen) rest.push(i);
+    var t = reduceMotion ? 500 : (PAUSE[eff] || 900);
+    later(function () { $("stepText").textContent = txt("stepOthers", "ほかのマスは…"); }, t);
+    rest.forEach(function (j, k) {
+      later(function () { cells[j].el.classList.remove("locked"); cells[j].el.classList.add("opened"); }, t + (reduceMotion ? 0 : k * STEP));
+    });
+    // 残り8マスが開き終わったら「結果を見る」を出す。押すまで結果画面には進まない
+    var lastOpen = t + (reduceMotion ? 0 : (rest.length - 1) * STEP);
+    later(showSeeButton, lastOpen + SEE_DELAY);
+  }
+
+  function showSeeButton() {
+    if (phase !== "reveal") return;
+    var b = $("seeBtn");
+    b.hidden = false;
+    b.disabled = true; // 出た直後の連打で、すぐ結果画面に進まないように
+    later(function () { b.disabled = false; }, SEE_LOCK);
+    // 画面が小さくてボタンが見えない所にあるときは、見える所までスクロールする
+    try { b.scrollIntoView({ block: "nearest", behavior: reduceMotion ? "auto" : "smooth" }); } catch (e) {}
+  }
+
+  function showResult(rec, revisit) {
+    clearTimers();
+    phase = "result";
+    var rs = $("resultScreen");
+    rs.style.setProperty("--accent", rec.color || col.main);
+    $("resHead").textContent = revisit ? txt("resRevisit", "今日の結果") : (rec.miss ? txt("resMiss", "けっか") : txt("resHit", "おめでとう！"));
+    $("resLabel").textContent = rec.label;
+    $("resName").textContent = rec.name;
+    $("resNote").textContent = rec.note || "";
+    $("resNote").hidden = !rec.note;
+    $("resStaff").hidden = !!rec.miss;
+    $("resTime").textContent = L.formatDateTime(new Date(rec.at));
+    $("resCode").textContent = rec.code;
+    var msg = $("resMsg"), btn = $("retryBtn");
+    if (limitOn) {
+      msg.hidden = false;
+      msg.textContent = revisit ? txt("limitRevisit", "今日はもう引きました。また明日どうぞ！") : txt("limitDone", "参加は1日1回です。また明日どうぞ！");
+      btn.hidden = true;
+    } else {
+      msg.hidden = true;
+      btn.hidden = false;
+      btn.disabled = true; // 結果が出た直後の誤タップで、すぐ次が始まらないように
+      setTimeout(function () { btn.disabled = false; }, 700);
+    }
+    show("resultScreen");
+  }
+
+  $("startBtn").addEventListener("click", function () { if (phase === "title") startDraw(); });
+  $("retryBtn").addEventListener("click", function () { if (phase === "result" && !limitOn) startDraw(); });
+  $("seeBtn").addEventListener("click", function () { if (phase === "reveal" && current) showResult(current, false); });
+
+  // 画面の向きが変わったとき、まだマスを選んでいなければ、カバーを新しい大きさで描き直す
+  window.addEventListener("resize", function () {
+    if (phase === "scratch" && chosen < 0) {
+      cells.forEach(setupCell);
+      brush = Math.max(11, Math.min(24, (cells[0].w || 80) * 0.19));
+    }
+  });
+
+  /* ---------- 演出（紙ふぶき、パンくず） ---------- */
+  var fx = $("fx"), fctx = fx.getContext("2d"), FW = 0, FH = 0, FDPR = 1;
+  var parts = [], running = false, lastT = 0;
+  function resizeFx() {
+    FDPR = Math.min(window.devicePixelRatio || 1, 2);
+    FW = window.innerWidth; FH = window.innerHeight;
+    fx.width = Math.round(FW * FDPR); fx.height = Math.round(FH * FDPR);
+  }
+  window.addEventListener("resize", resizeFx);
+  resizeFx();
+
+  // 演出を全部消す（「もう一度」のとき）
+  function clearFx() {
+    parts.length = 0;
+    fctx.setTransform(1, 0, 0, 1, 0, 0);
+    fctx.clearRect(0, 0, fx.width, fx.height);
+  }
+
+  function crumbs(x, y) {
+    if (reduceMotion || parts.length > 160 || Math.random() < 0.45) return;
+    parts.push({ x: x, y: y, vx: (Math.random() - 0.5) * 80, vy: -20 - Math.random() * 60, g: 700, age: 0, life: 0.7,
+      size: 1.5 + Math.random() * 2.5, color: Math.random() < 0.5 ? (col.crust || "#d29a52") : (col.crustDark || "#a4692e"), shape: "dot", rot: 0, vr: 0 });
+    run();
+  }
+
+  var FX = { big: 150, mid: 60, small: 24, miss: 0 };
+  function celebrate(eff, color, rect) {
+    var n = FX[eff] || 0;
+    if (reduceMotion || !n) return;
+    var ox = rect.left + rect.width / 2, oy = rect.top + rect.height / 2;
+    var cols = [color, col.main || "#b9502b", col.sub || "#5f7d3a", "#f2c14e", "#fffaf1"];
+    for (var i = 0; i < n; i++) {
+      var fromTop = eff === "big" && i % 2 === 0;
+      var a = Math.random() * Math.PI * 2, sp = 160 + Math.random() * (eff === "small" ? 160 : 340);
+      parts.push({
+        x: fromTop ? Math.random() * FW : ox, y: fromTop ? -20 - Math.random() * FH * 0.4 : oy,
+        vx: fromTop ? (Math.random() - 0.5) * 60 : Math.cos(a) * sp,
+        vy: fromTop ? 90 + Math.random() * 120 : Math.sin(a) * sp - 140,
+        g: fromTop ? 60 : 520, age: 0, life: fromTop ? 3.6 : 1.4 + Math.random() * 0.8,
+        size: 4 + Math.random() * 5, color: cols[i % cols.length],
+        shape: (C.art === "bread" && i % 3 === 0) ? "grain" : "rect", rot: Math.random() * 6, vr: (Math.random() - 0.5) * 9
+      });
+    }
+    run();
+  }
+
+  function run() {
+    if (running) return;
+    running = true; lastT = performance.now();
+    requestAnimationFrame(tick);
+  }
+  function tick(now) {
+    var dt = Math.min(0.05, Math.max(0, (now - lastT) / 1000)); lastT = now;
+    fctx.setTransform(FDPR, 0, 0, FDPR, 0, 0);
+    fctx.clearRect(0, 0, FW, FH);
+    for (var i = parts.length - 1; i >= 0; i--) {
+      var p = parts[i];
+      p.age += dt; p.vy += p.g * dt; p.vx *= 0.99; p.x += p.vx * dt; p.y += p.vy * dt; p.rot += p.vr * dt;
+      if (p.age >= p.life || p.y > FH + 30) { parts.splice(i, 1); continue; }
+      fctx.save();
+      fctx.globalAlpha = Math.min(1, (1 - p.age / p.life) * 2);
+      fctx.translate(p.x, p.y); fctx.rotate(p.rot);
+      fctx.fillStyle = p.color;
+      fctx.beginPath();
+      if (p.shape === "rect") fctx.rect(-p.size, -p.size * 0.5, p.size * 2, p.size);
+      else if (p.shape === "grain") fctx.ellipse(0, 0, p.size * 1.1, p.size * 0.55, 0, 0, Math.PI * 2);
+      else fctx.arc(0, 0, p.size, 0, Math.PI * 2);
+      fctx.fill();
+      fctx.restore();
+    }
+    if (parts.length) requestAnimationFrame(tick);
+    else { running = false; fctx.clearRect(0, 0, FW, FH); }
+  }
+
+  /* ---------- 最初の画面 ---------- */
+  var todays = limitOn ? L.parseRecord(store.get(), L.dayKey(new Date())) : null;
+  if (todays) showResult(todays, true);
+  else show("titleScreen");
+
+  /* ---------- 拡大・長押しメニューを防ぐ（スクロールは、カードの上以外では使える） ---------- */
+  document.addEventListener("dblclick", function (e) { e.preventDefault(); }, { passive: false });
+  document.addEventListener("gesturestart", function (e) { e.preventDefault(); }, { passive: false });
+  document.addEventListener("contextmenu", function (e) { e.preventDefault(); });
+})();
+</script>
 </body>
 </html>
